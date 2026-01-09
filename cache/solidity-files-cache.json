@@ -1,0 +1,115 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "E:\\claude_projects\\cca-minimal\\contracts\\SimpleERC20.sol": {
+      "lastModificationDate": 1240428288000,
+      "contentHash": "8749cadfafc2254a37eef03fadfb7ab9",
+      "sourceName": "contracts/SimpleERC20.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "SimpleERC20"
+      ]
+    },
+    "E:\\claude_projects\\cca-minimal\\contracts\\SimpleTokenFactory.sol": {
+      "lastModificationDate": 1240428288000,
+      "contentHash": "7a997d920a8436161d7b4625c7d630ed",
+      "sourceName": "contracts/SimpleTokenFactory.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./FactoryERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "SimpleTokenFactory"
+      ]
+    },
+    "E:\\claude_projects\\cca-minimal\\contracts\\FactoryERC20.sol": {
+      "lastModificationDate": 1240428288000,
+      "contentHash": "3ef70c6181cd4f285def9354988cea6f",
+      "sourceName": "contracts/FactoryERC20.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "FactoryERC20"
+      ]
+    }
+  }
+}
