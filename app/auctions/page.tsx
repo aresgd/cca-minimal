@@ -1,11 +1,28 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useBlockNumber } from 'wagmi';
-import { parseEther, formatEther, formatUnits } from 'viem';
+import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt, usePublicClient, useBlockNumber } from 'wagmi';
+import { parseEther, formatEther } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
-import { CCA_FACTORY_ABI, CCA_FACTORY_ADDRESS, CCA_AUCTION_ABI, ERC20_ABI } from '@/lib/cca-abi';
+import { CCA_AUCTION_ABI, ERC20_ABI } from '@/lib/cca-abi';
+
+// Bid type from contract
+interface Bid {
+  startBlock: bigint;
+  startCumulativeMps: number;
+  exitedBlock: bigint;
+  maxPrice: bigint;
+  owner: string;
+  amountQ96: bigint;
+  tokensFilled: bigint;
+}
+
+// User bid with ID
+interface UserBid {
+  id: bigint;
+  bid: Bid;
+}
 
 // Helper to format address
 function formatAddress(address: string): string {
@@ -115,6 +132,10 @@ export default function Auctions() {
   const [bidAmount, setBidAmount] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
 
+  // User bids state
+  const [userBids, setUserBids] = useState<UserBid[]>([]);
+  const [isLoadingBids, setIsLoadingBids] = useState(false);
+
   // Load saved auctions from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('cca-auctions');
@@ -199,6 +220,64 @@ export default function Auctions() {
   // Write contract for bidding
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  // Fetch user bids from BidSubmitted events
+  useEffect(() => {
+    const fetchUserBids = async () => {
+      if (!publicClient || !selectedAuction || !address) {
+        setUserBids([]);
+        return;
+      }
+
+      setIsLoadingBids(true);
+      try {
+        // Get BidSubmitted events for the connected user
+        const logs = await publicClient.getLogs({
+          address: selectedAuction as `0x${string}`,
+          event: {
+            type: 'event',
+            name: 'BidSubmitted',
+            inputs: [
+              { name: 'id', type: 'uint256', indexed: true },
+              { name: 'owner', type: 'address', indexed: true },
+              { name: 'price', type: 'uint256', indexed: false },
+              { name: 'amount', type: 'uint128', indexed: false },
+            ],
+          },
+          args: {
+            owner: address,
+          },
+          fromBlock: 'earliest',
+          toBlock: 'latest',
+        });
+
+        // Get bid details for each bid ID
+        const bidPromises = logs.map(async (log) => {
+          const bidId = log.args.id as bigint;
+          try {
+            const bidData = await publicClient.readContract({
+              address: selectedAuction as `0x${string}`,
+              abi: CCA_AUCTION_ABI,
+              functionName: 'bids',
+              args: [bidId],
+            }) as Bid;
+            return { id: bidId, bid: bidData };
+          } catch {
+            return null;
+          }
+        });
+
+        const bids = (await Promise.all(bidPromises)).filter((b): b is UserBid => b !== null);
+        setUserBids(bids);
+      } catch (err) {
+        console.error('Error fetching bids:', err);
+        setUserBids([]);
+      }
+      setIsLoadingBids(false);
+    };
+
+    fetchUserBids();
+  }, [publicClient, selectedAuction, address, isSuccess]); // Refresh when a new bid is placed
 
   const auctionStatus = getAuctionStatus(
     totalSupply,
@@ -672,6 +751,124 @@ export default function Auctions() {
                     </button>
                   </form>
                 </div>
+
+                {/* Your Bids Section */}
+                {isConnected && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Your Bids
+                    </h3>
+
+                    {isLoadingBids ? (
+                      <div className="text-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto mb-2"></div>
+                        <p className="text-sm text-gray-500">Loading your bids...</p>
+                      </div>
+                    ) : userBids.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                        You haven't placed any bids in this auction yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {userBids.map((userBid) => {
+                          const isExited = userBid.bid.exitedBlock > 0n;
+                          const canClaim = auctionStatus === 'claimable' && !isExited && userBid.bid.tokensFilled > 0n;
+                          const canExit = auctionStatus === 'active' && !isExited;
+                          // Convert Q96 amount to ETH (divide by 2^96)
+                          const amountEth = Number(userBid.bid.amountQ96) / (2 ** 96);
+
+                          return (
+                            <div
+                              key={userBid.id.toString()}
+                              className={`p-4 rounded-lg border ${
+                                isExited
+                                  ? 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
+                                  : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-gray-900 dark:text-white">
+                                  Bid #{userBid.id.toString()}
+                                </span>
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                  isExited
+                                    ? 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                                    : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                }`}>
+                                  {isExited ? 'Exited' : 'Active'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                                <div>
+                                  <span className="text-gray-500 dark:text-gray-400">Amount:</span>
+                                  <span className="ml-1 font-medium text-gray-900 dark:text-white">
+                                    {amountEth.toFixed(6)} ETH
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500 dark:text-gray-400">Max Price:</span>
+                                  <span className="ml-1 font-medium text-gray-900 dark:text-white">
+                                    {formatEther(userBid.bid.maxPrice)} ETH
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500 dark:text-gray-400">Tokens Filled:</span>
+                                  <span className="ml-1 font-medium text-gray-900 dark:text-white">
+                                    {formatEther(userBid.bid.tokensFilled)}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500 dark:text-gray-400">Block:</span>
+                                  <span className="ml-1 font-medium text-gray-900 dark:text-white">
+                                    {userBid.bid.startBlock.toString()}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {(canClaim || canExit) && (
+                                <div className="flex gap-2">
+                                  {canExit && (
+                                    <button
+                                      onClick={() => {
+                                        writeContract({
+                                          address: selectedAuction as `0x${string}`,
+                                          abi: CCA_AUCTION_ABI,
+                                          functionName: 'exitBid',
+                                          args: [userBid.id],
+                                        });
+                                      }}
+                                      disabled={isPending}
+                                      className="flex-1 px-3 py-2 text-sm bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 text-white rounded-lg"
+                                    >
+                                      Exit Bid
+                                    </button>
+                                  )}
+                                  {canClaim && (
+                                    <button
+                                      onClick={() => {
+                                        writeContract({
+                                          address: selectedAuction as `0x${string}`,
+                                          abi: CCA_AUCTION_ABI,
+                                          functionName: 'claimTokens',
+                                          args: [userBid.id],
+                                        });
+                                      }}
+                                      disabled={isPending}
+                                      className="flex-1 px-3 py-2 text-sm bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white rounded-lg"
+                                    >
+                                      Claim Tokens
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

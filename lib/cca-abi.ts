@@ -138,11 +138,38 @@ export const CCA_AUCTION_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'activated',
+    name: 'nextBidId',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
-    outputs: [{ name: '', type: 'bool' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'bids',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'bidId', type: 'uint256' }],
+    outputs: [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'startBlock', type: 'uint64' },
+          { name: 'startCumulativeMps', type: 'uint24' },
+          { name: 'exitedBlock', type: 'uint64' },
+          { name: 'maxPrice', type: 'uint256' },
+          { name: 'owner', type: 'address' },
+          { name: 'amountQ96', type: 'uint256' },
+          { name: 'tokensFilled', type: 'uint256' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'clearingPrice',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
   },
   // ============ BIDDING FUNCTIONS ============
   // Submit Bid
