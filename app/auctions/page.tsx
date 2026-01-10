@@ -154,18 +154,17 @@ export default function Auctions() {
 
   const { data: auctionData, isLoading: isLoadingAuction } = useReadContracts({
     contracts: [
-      { ...auctionContract, functionName: 'TOKEN' },
-      { ...auctionContract, functionName: 'CURRENCY' },
-      { ...auctionContract, functionName: 'TOTAL_SUPPLY' },
-      { ...auctionContract, functionName: 'FLOOR_PRICE' },
-      { ...auctionContract, functionName: 'TICK_SPACING' },
-      { ...auctionContract, functionName: 'START_BLOCK' },
-      { ...auctionContract, functionName: 'END_BLOCK' },
-      { ...auctionContract, functionName: 'CLAIM_BLOCK' },
-      { ...auctionContract, functionName: 'REQUIRED_CURRENCY_RAISED' },
+      { ...auctionContract, functionName: 'token' },
+      { ...auctionContract, functionName: 'currency' },
+      { ...auctionContract, functionName: 'totalSupply' },
+      { ...auctionContract, functionName: 'floorPrice' },
+      { ...auctionContract, functionName: 'tickSpacing' },
+      { ...auctionContract, functionName: 'startBlock' },
+      { ...auctionContract, functionName: 'endBlock' },
+      { ...auctionContract, functionName: 'claimBlock' },
+      { ...auctionContract, functionName: 'requiredCurrencyRaised' },
       { ...auctionContract, functionName: 'currencyRaised' },
       { ...auctionContract, functionName: 'isGraduated' },
-      { ...auctionContract, functionName: 'activated' },
       { ...auctionContract, functionName: 'totalCleared' },
     ],
     query: { enabled: !!selectedAuction },
@@ -183,8 +182,7 @@ export default function Auctions() {
   const requiredCurrencyRaised = auctionData?.[8]?.result as bigint | undefined;
   const currencyRaised = auctionData?.[9]?.result as bigint | undefined;
   const isGraduated = auctionData?.[10]?.result as boolean | undefined;
-  const activated = auctionData?.[11]?.result as boolean | undefined;
-  const totalCleared = auctionData?.[12]?.result as bigint | undefined;
+  const totalCleared = auctionData?.[11]?.result as bigint | undefined;
 
   // Batch read token metadata (only when we have tokenAddress)
   const { data: tokenData } = useReadContracts({

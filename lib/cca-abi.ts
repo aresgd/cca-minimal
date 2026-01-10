@@ -41,81 +41,82 @@ export const CCA_FACTORY_ABI = [
 ] as const;
 
 // Individual Auction Contract ABI (for interacting with deployed auctions)
+// Function names match the actual CCA contract on Sepolia
 export const CCA_AUCTION_ABI = [
   // ============ IMMUTABLE STORAGE VARIABLES ============
   // These are set during deployment and readable as public variables
   {
-    name: 'TOKEN',
+    name: 'token',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
   },
   {
-    name: 'CURRENCY',
+    name: 'currency',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
   },
   {
-    name: 'TOTAL_SUPPLY',
+    name: 'totalSupply',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'FLOOR_PRICE',
+    name: 'floorPrice',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'TICK_SPACING',
+    name: 'tickSpacing',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'START_BLOCK',
+    name: 'startBlock',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint64' }],
   },
   {
-    name: 'END_BLOCK',
+    name: 'endBlock',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint64' }],
   },
   {
-    name: 'CLAIM_BLOCK',
+    name: 'claimBlock',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint64' }],
   },
   {
-    name: 'REQUIRED_CURRENCY_RAISED',
+    name: 'requiredCurrencyRaised',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint128' }],
   },
   {
-    name: 'TOKENS_RECIPIENT',
+    name: 'tokensRecipient',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
   },
   {
-    name: 'FUNDS_RECIPIENT',
+    name: 'fundsRecipient',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
