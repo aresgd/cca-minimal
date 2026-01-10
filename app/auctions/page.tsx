@@ -566,6 +566,11 @@ export default function Auctions() {
                       <span>{totalCleared ? formatEther(totalCleared as bigint) : '0'} sold</span>
                       <span>{totalSupply ? formatEther(totalSupply as bigint) : '0'} total</span>
                     </div>
+                    {totalCleared === 0n && auctionStatus === 'active' && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
+                        * Tokens sold updates when checkpoint() is called on the contract
+                      </p>
+                    )}
                   </div>
 
                   {/* Key Metrics Grid */}
@@ -759,6 +764,38 @@ export default function Auctions() {
                     </button>
                   </form>
                 </div>
+
+                {/* Claim Tokens Callout - Show when auction is claimable/ended and user has bids */}
+                {isConnected && (auctionStatus === 'claimable' || auctionStatus === 'ended') && userBids.length > 0 && (
+                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg shadow-lg border-2 border-purple-300 dark:border-purple-700 p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0">
+                        <div className="w-12 h-12 bg-purple-500 dark:bg-purple-600 rounded-full flex items-center justify-center">
+                          <span className="text-2xl">🎁</span>
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                          {auctionStatus === 'claimable' ? 'Ready to Claim Your Tokens!' : 'Auction Ended - Claim Period Coming Soon'}
+                        </h3>
+                        <p className="text-gray-700 dark:text-gray-300 mb-4">
+                          {auctionStatus === 'claimable'
+                            ? 'The auction has ended and the claim period has started. You can now claim your tokens from your bids below.'
+                            : `The auction has ended. You'll be able to claim tokens starting at block ${claimBlock?.toString()}.`
+                          }
+                        </p>
+                        {auctionStatus === 'claimable' && (
+                          <div className="flex items-center gap-2 text-sm text-purple-700 dark:text-purple-300">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                            <span className="font-medium">Scroll down to your bids and click "Claim Tokens"</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Your Bids Section */}
                 {isConnected && (
