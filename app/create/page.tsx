@@ -244,9 +244,9 @@ export default function CreateAuction() {
       // Encode the AuctionParameters struct as a tuple
       // CRITICAL: The contract expects configData to be an ABI-encoded struct (tuple),
       // so we must wrap the types in parentheses and pass values as a nested array
-      // NOTE: tickSpacing is uint64 (not uint256) per the Solidity struct definition
+      // NOTE: tickSpacing is uint256 per the Uniswap CCA Solidity struct definition
       const configData = encodeAbiParameters(
-        parseAbiParameters('(address, address, address, uint64, uint64, uint64, uint64, address, uint256, uint128, bytes)'),
+        parseAbiParameters('(address, address, address, uint64, uint64, uint64, uint256, address, uint256, uint128, bytes)'),
         [[
           auctionParams.currency,
           auctionParams.tokensRecipient,
