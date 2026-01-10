@@ -818,9 +818,13 @@ export default function Auctions() {
                         {userBids.map((userBid) => {
                           const isExited = userBid.bid.exitedBlock > 0n;
                           const canClaim = auctionStatus === 'claimable' && !isExited && userBid.bid.tokensFilled > 0n;
-                          const canExit = auctionStatus === 'active' && !isExited;
-                          // Convert Q96 amount to ETH (divide by 2^96)
-                          const amountEth = Number(userBid.bid.amountQ96) / (2 ** 96);
+                          // Can only exit after auction ends (not during active bidding)
+                          const canExit = (auctionStatus === 'ended' || auctionStatus === 'claimable') && !isExited;
+                          // amountQ96 is in Q96 format: (wei amount) * 2^96
+                          // To get ETH: divide by 2^96 to get wei, then divide by 10^18 to get ETH
+                          // Simplified: divide by (2^96 * 10^18)
+                          const amountWei = userBid.bid.amountQ96 / (2n ** 96n);
+                          const amountEth = formatEther(amountWei);
 
                           return (
                             <div
@@ -848,7 +852,7 @@ export default function Auctions() {
                                 <div>
                                   <span className="text-gray-500 dark:text-gray-400">Amount:</span>
                                   <span className="ml-1 font-medium text-gray-900 dark:text-white">
-                                    {amountEth.toFixed(6)} ETH
+                                    {amountEth} ETH
                                   </span>
                                 </div>
                                 <div>
@@ -871,39 +875,48 @@ export default function Auctions() {
                                 </div>
                               </div>
 
-                              {(canClaim || canExit) && (
-                                <div className="flex gap-2">
-                                  {canExit && (
-                                    <button
-                                      onClick={() => {
-                                        writeContract({
-                                          address: selectedAuction as `0x${string}`,
-                                          abi: CCA_AUCTION_ABI,
-                                          functionName: 'exitBid',
-                                          args: [userBid.id],
-                                        });
-                                      }}
-                                      disabled={isPending}
-                                      className="flex-1 px-3 py-2 text-sm bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 text-white rounded-lg"
-                                    >
-                                      Exit Bid
-                                    </button>
+                              {(canClaim || canExit || (auctionStatus === 'active' && !isExited)) && (
+                                <div className="flex flex-col gap-2">
+                                  {auctionStatus === 'active' && !isExited && (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                                      💡 You can exit this bid after the auction ends (block {endBlock?.toString()})
+                                    </p>
                                   )}
-                                  {canClaim && (
-                                    <button
-                                      onClick={() => {
-                                        writeContract({
-                                          address: selectedAuction as `0x${string}`,
-                                          abi: CCA_AUCTION_ABI,
-                                          functionName: 'claimTokens',
-                                          args: [userBid.id],
-                                        });
-                                      }}
-                                      disabled={isPending}
-                                      className="flex-1 px-3 py-2 text-sm bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white rounded-lg"
-                                    >
-                                      Claim Tokens
-                                    </button>
+                                  {(canExit || canClaim) && (
+                                    <div className="flex gap-2">
+                                      {canExit && (
+                                        <button
+                                          onClick={() => {
+                                            writeContract({
+                                              address: selectedAuction as `0x${string}`,
+                                              abi: CCA_AUCTION_ABI,
+                                              functionName: 'exitBid',
+                                              args: [userBid.id],
+                                            });
+                                          }}
+                                          disabled={isPending}
+                                          className="flex-1 px-3 py-2 text-sm bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 text-white rounded-lg"
+                                        >
+                                          Exit Bid
+                                        </button>
+                                      )}
+                                      {canClaim && (
+                                        <button
+                                          onClick={() => {
+                                            writeContract({
+                                              address: selectedAuction as `0x${string}`,
+                                              abi: CCA_AUCTION_ABI,
+                                              functionName: 'claimTokens',
+                                              args: [userBid.id],
+                                            });
+                                          }}
+                                          disabled={isPending}
+                                          className="flex-1 px-3 py-2 text-sm bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white rounded-lg"
+                                        >
+                                          Claim Tokens
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               )}
