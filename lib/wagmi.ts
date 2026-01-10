@@ -3,7 +3,7 @@ import { mainnet, sepolia, base, baseSepolia } from 'wagmi/chains';
 
 export const config = getDefaultConfig({
   appName: 'CCA Minimal',
-  projectId: 'cca-minimal', // Get from https://cloud.walletconnect.com
+  projectId: 'dfda96ad00844623a353556991d78e37',
   chains: [mainnet, sepolia, base, baseSepolia],
   ssr: true,
 });

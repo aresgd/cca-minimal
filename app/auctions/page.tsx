@@ -21,19 +21,56 @@ function blocksToTime(blocks: bigint): string {
   return `${Math.floor(seconds / 86400)}d`;
 }
 
+// Helper to estimate date/time from block difference
+function blocksToEstimatedTime(blockDiff: bigint, isFuture: boolean = true): string {
+  const seconds = Number(blockDiff) * 12; // ~12 seconds per block
+  const now = new Date();
+  const targetTime = new Date(now.getTime() + (isFuture ? seconds : -seconds) * 1000);
+
+  // Format as readable date/time
+  const options: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  };
+  return targetTime.toLocaleDateString('en-US', options);
+}
+
+// Helper to get relative time description
+function getRelativeTimeDescription(blockDiff: bigint, isFuture: boolean): string {
+  const seconds = Math.abs(Number(blockDiff) * 12);
+
+  if (seconds < 60) return isFuture ? `in ${seconds}s` : `${seconds}s ago`;
+  if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60);
+    return isFuture ? `in ${mins}m` : `${mins}m ago`;
+  }
+  if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    return isFuture ? `in ${hours}h` : `${hours}h ago`;
+  }
+  const days = Math.floor(seconds / 86400);
+  return isFuture ? `in ${days}d` : `${days}d ago`;
+}
+
 // Auction status type
 type AuctionStatus = 'pending' | 'active' | 'ended' | 'claimable' | 'inactive';
 
 function getAuctionStatus(
-  activated: boolean | undefined,
+  totalSupply: bigint | undefined,
   startBlock: bigint | undefined,
   endBlock: bigint | undefined,
   claimBlock: bigint | undefined,
   currentBlock: bigint | undefined
 ): AuctionStatus {
-  if (!activated) return 'inactive';
+  // Check if auction has tokens (activated) - totalSupply > 0 means tokens were transferred
+  if (!totalSupply || totalSupply === 0n) return 'inactive';
+
+  // Need all block info to determine timing status
   if (!currentBlock || !startBlock || !endBlock || !claimBlock) return 'pending';
 
+  // Determine status based on current block position
   if (currentBlock < startBlock) return 'pending';
   if (currentBlock >= startBlock && currentBlock < endBlock) return 'active';
   if (currentBlock >= endBlock && currentBlock < claimBlock) return 'ended';
@@ -166,10 +203,10 @@ export default function Auctions() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const auctionStatus = getAuctionStatus(
-    activated as boolean,
-    startBlock as bigint,
-    endBlock as bigint,
-    claimBlock as bigint,
+    totalSupply,
+    startBlock,
+    endBlock,
+    claimBlock,
     currentBlock
   );
 
@@ -342,6 +379,90 @@ export default function Auctions() {
                     <StatusBadge status={auctionStatus} />
                   </div>
 
+                  {/* Auction Timeline */}
+                  <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Auction Timeline</h3>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      {/* Start */}
+                      <div className={`p-3 rounded-lg ${
+                        currentBlock && startBlock && currentBlock >= startBlock
+                          ? 'bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700'
+                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600'
+                      }`}>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Start</p>
+                        <p className="font-semibold text-gray-900 dark:text-white text-sm">
+                          Block {startBlock?.toString() || '...'}
+                        </p>
+                        {currentBlock && startBlock && (
+                          <p className="text-xs mt-1">
+                            {currentBlock < startBlock ? (
+                              <span className="text-yellow-600 dark:text-yellow-400">
+                                {blocksToEstimatedTime(startBlock - currentBlock, true)}
+                                <br />
+                                <span className="text-gray-500">({getRelativeTimeDescription(startBlock - currentBlock, true)})</span>
+                              </span>
+                            ) : (
+                              <span className="text-green-600 dark:text-green-400">Started</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* End */}
+                      <div className={`p-3 rounded-lg ${
+                        currentBlock && endBlock && currentBlock >= endBlock
+                          ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700'
+                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600'
+                      }`}>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">End</p>
+                        <p className="font-semibold text-gray-900 dark:text-white text-sm">
+                          Block {endBlock?.toString() || '...'}
+                        </p>
+                        {currentBlock && endBlock && (
+                          <p className="text-xs mt-1">
+                            {currentBlock < endBlock ? (
+                              <span className="text-blue-600 dark:text-blue-400">
+                                {blocksToEstimatedTime(endBlock - currentBlock, true)}
+                                <br />
+                                <span className="text-gray-500">({getRelativeTimeDescription(endBlock - currentBlock, true)})</span>
+                              </span>
+                            ) : (
+                              <span className="text-blue-600 dark:text-blue-400">Ended</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Claim */}
+                      <div className={`p-3 rounded-lg ${
+                        currentBlock && claimBlock && currentBlock >= claimBlock
+                          ? 'bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700'
+                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600'
+                      }`}>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Claim</p>
+                        <p className="font-semibold text-gray-900 dark:text-white text-sm">
+                          Block {claimBlock?.toString() || '...'}
+                        </p>
+                        {currentBlock && claimBlock && (
+                          <p className="text-xs mt-1">
+                            {currentBlock < claimBlock ? (
+                              <span className="text-purple-600 dark:text-purple-400">
+                                {blocksToEstimatedTime(claimBlock - currentBlock, true)}
+                                <br />
+                                <span className="text-gray-500">({getRelativeTimeDescription(claimBlock - currentBlock, true)})</span>
+                              </span>
+                            ) : (
+                              <span className="text-purple-600 dark:text-purple-400">Claimable</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
+                      Current Block: {currentBlock?.toString() || '...'} | ~12 seconds per block
+                    </p>
+                  </div>
+
                   {/* Progress Bar */}
                   <div className="mb-6">
                     <div className="flex justify-between text-sm mb-1">
@@ -394,7 +515,7 @@ export default function Auctions() {
                 {/* Auction Parameters */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    Auction Parameters
+                    Auction Details
                   </h3>
                   <div className="grid md:grid-cols-2 gap-4 text-sm">
                     <div className="space-y-3">
@@ -421,46 +542,29 @@ export default function Auctions() {
                           {tickSpacing ? formatEther(tickSpacing as bigint) : '0'} ETH
                         </span>
                       </div>
+                    </div>
+                    <div className="space-y-3">
                       <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
                         <span className="text-gray-600 dark:text-gray-400">Currency</span>
                         <span className="font-medium text-gray-900 dark:text-white">
                           {currency === '0x0000000000000000000000000000000000000000' ? 'ETH' : formatAddress(currency as string || '')}
                         </span>
                       </div>
-                    </div>
-                    <div className="space-y-3">
                       <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                        <span className="text-gray-600 dark:text-gray-400">Start Block</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {startBlock?.toString() || '...'}
-                          {blocksUntilStart > 0n && (
-                            <span className="text-xs text-gray-500 ml-1">
-                              (in {blocksToTime(blocksUntilStart)})
-                            </span>
-                          )}
-                        </span>
+                        <span className="text-gray-600 dark:text-gray-400">Auction Contract</span>
+                        <a
+                          href={`https://sepolia.etherscan.io/address/${selectedAuction}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-indigo-600 hover:text-indigo-800"
+                        >
+                          {selectedAuction ? formatAddress(selectedAuction) : '...'}
+                        </a>
                       </div>
                       <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                        <span className="text-gray-600 dark:text-gray-400">End Block</span>
+                        <span className="text-gray-600 dark:text-gray-400">Activation Status</span>
                         <span className="font-medium text-gray-900 dark:text-white">
-                          {endBlock?.toString() || '...'}
-                          {blocksUntilEnd > 0n && (
-                            <span className="text-xs text-gray-500 ml-1">
-                              (in {blocksToTime(blocksUntilEnd)})
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                        <span className="text-gray-600 dark:text-gray-400">Claim Block</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {claimBlock?.toString() || '...'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                        <span className="text-gray-600 dark:text-gray-400">Current Block</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {currentBlock?.toString() || '...'}
+                          {totalSupply && totalSupply > 0n ? '✓ Tokens Received' : '✗ Awaiting Tokens'}
                         </span>
                       </div>
                     </div>
@@ -477,7 +581,9 @@ export default function Auctions() {
                     <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                       <p className="text-sm text-yellow-800 dark:text-yellow-300">
                         {auctionStatus === 'inactive' && 'This auction has not been activated yet. Tokens need to be transferred to the auction contract.'}
-                        {auctionStatus === 'pending' && `Auction starts in approximately ${blocksToTime(blocksUntilStart)}`}
+                        {auctionStatus === 'pending' && startBlock && currentBlock && currentBlock < startBlock && (
+                          <>Auction starts {getRelativeTimeDescription(startBlock - currentBlock, true)} (estimated: {blocksToEstimatedTime(startBlock - currentBlock, true)})</>
+                        )}
                         {auctionStatus === 'ended' && 'This auction has ended. Wait for the claim period.'}
                         {auctionStatus === 'claimable' && 'Auction is complete. You can now claim your tokens.'}
                       </p>
