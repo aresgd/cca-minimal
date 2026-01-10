@@ -46,6 +46,16 @@ function blocksToTime(blocks: bigint): string {
   return `${days}d ${hours}h`;
 }
 
+function formatNumber(value: number): string {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(2)}M`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)}K`;
+  }
+  return value.toFixed(2);
+}
+
 type AuctionStatus = 'inactive' | 'pending' | 'active' | 'ended' | 'claimable';
 
 function getAuctionStatus(
@@ -192,6 +202,8 @@ export default function ParticipatePage() {
   const [maxPrice, setMaxPrice] = useState('');
   const [userBids, setUserBids] = useState<UserBid[]>([]);
   const [isLoadingBids, setIsLoadingBids] = useState(false);
+  const [totalBids, setTotalBids] = useState<number>(0);
+  const [showCCAInfo, setShowCCAInfo] = useState(false);
 
   // Contract interactions
   const { writeContract: submitBid, data: bidHash, isPending: isBidPending, error: bidError } = useWriteContract();
@@ -258,14 +270,15 @@ export default function ParticipatePage() {
   // Calculate auction status
   const auctionStatus = getAuctionStatus(activated, startBlock, endBlock, claimBlock, currentBlock);
 
-  // Fetch user bids
+  // Fetch user bids and total bids
   useEffect(() => {
-    async function fetchUserBids() {
-      if (!publicClient || !address || !auctionAddress || !startBlock) return;
+    async function fetchBids() {
+      if (!publicClient || !auctionAddress || !startBlock) return;
 
       setIsLoadingBids(true);
       try {
-        const logs = await publicClient.getLogs({
+        // Fetch total bids (all BidSubmitted events)
+        const allBidLogs = await publicClient.getLogs({
           address: auctionAddress as `0x${string}`,
           event: {
             type: 'event',
@@ -277,40 +290,61 @@ export default function ParticipatePage() {
               { type: 'uint128', name: 'amount' },
             ],
           },
-          args: { owner: address },
           fromBlock: startBlock > 100000n ? startBlock - 100000n : 0n,
           toBlock: 'latest',
         });
 
-        const bids: UserBid[] = await Promise.all(
-          logs.map(async (log) => {
-            const bidId = log.args.id as bigint;
-            const bidData = await publicClient.readContract({
-              address: auctionAddress as `0x${string}`,
-              abi: CCA_AUCTION_ABI,
-              functionName: 'bids',
-              args: [bidId],
-            }) as Bid;
+        setTotalBids(allBidLogs.length);
 
-            return {
-              bidId,
-              amount: log.args.amount as bigint,
-              maxPrice: bidData.maxPrice,
-              tokensFilled: bidData.tokensFilled,
-              isExited: bidData.exitedBlock > 0n,
-            };
-          })
-        );
+        // Fetch user-specific bids if connected
+        if (address) {
+          const userBidLogs = await publicClient.getLogs({
+            address: auctionAddress as `0x${string}`,
+            event: {
+              type: 'event',
+              name: 'BidSubmitted',
+              inputs: [
+                { type: 'uint256', name: 'id', indexed: true },
+                { type: 'address', name: 'owner', indexed: true },
+                { type: 'uint256', name: 'price' },
+                { type: 'uint128', name: 'amount' },
+              ],
+            },
+            args: { owner: address },
+            fromBlock: startBlock > 100000n ? startBlock - 100000n : 0n,
+            toBlock: 'latest',
+          });
 
-        setUserBids(bids);
+          const bids: UserBid[] = await Promise.all(
+            userBidLogs.map(async (log) => {
+              const bidId = log.args.id as bigint;
+              const bidData = await publicClient.readContract({
+                address: auctionAddress as `0x${string}`,
+                abi: CCA_AUCTION_ABI,
+                functionName: 'bids',
+                args: [bidId],
+              }) as Bid;
+
+              return {
+                bidId,
+                amount: log.args.amount as bigint,
+                maxPrice: bidData.maxPrice,
+                tokensFilled: bidData.tokensFilled,
+                isExited: bidData.exitedBlock > 0n,
+              };
+            })
+          );
+
+          setUserBids(bids);
+        }
       } catch (error) {
-        console.error('Error fetching user bids:', error);
+        console.error('Error fetching bids:', error);
       } finally {
         setIsLoadingBids(false);
       }
     }
 
-    fetchUserBids();
+    fetchBids();
   }, [publicClient, address, auctionAddress, startBlock, isBidSuccess, isExitSuccess, isClaimSuccess]);
 
   // Handle bid submission
@@ -418,10 +452,95 @@ export default function ParticipatePage() {
           <h2 className={`text-4xl sm:text-5xl font-bold mb-4 ${theme.textPrimary}`}>
             {theme.heroTitle}
           </h2>
-          <p className={`text-xl ${theme.textSecondary} max-w-2xl mx-auto`}>
+          <p className={`text-xl ${theme.textSecondary} max-w-2xl mx-auto mb-4`}>
             {theme.heroSubtitle}
           </p>
+
+          {/* How CCA Works Button */}
+          <button
+            onClick={() => setShowCCAInfo(!showCCAInfo)}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 ${theme.textSecondary} hover:${theme.textPrimary} transition-colors`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            How does CCA work?
+          </button>
         </div>
+
+        {/* CCA Explanation Section */}
+        {showCCAInfo && (
+          <div className={`${theme.cardBackground} rounded-2xl shadow-lg p-6 mb-8 border-2 border-indigo-200 dark:border-indigo-800`}>
+            <div className="flex justify-between items-start mb-4">
+              <h3 className={`text-xl font-bold ${theme.textPrimary}`}>
+                Understanding Continuous Clearing Auctions
+              </h3>
+              <button
+                onClick={() => setShowCCAInfo(false)}
+                className={`p-1 rounded-lg ${theme.textSecondary} hover:${theme.textPrimary}`}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className={`space-y-4 ${theme.textSecondary}`}>
+              <div>
+                <h4 className={`font-semibold ${theme.textPrimary} mb-2`}>🎯 Fair Price Discovery</h4>
+                <p>
+                  CCA eliminates timing games and encourages early participation. The clearing price adjusts continuously
+                  based on demand, ensuring everyone pays the same fair price for tokens.
+                </p>
+              </div>
+
+              <div>
+                <h4 className={`font-semibold ${theme.textPrimary} mb-2`}>💰 How Bidding Works</h4>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li><strong>Set Your Max Price:</strong> The maximum you're willing to pay per token</li>
+                  <li><strong>Submit ETH:</strong> The amount you want to invest</li>
+                  <li><strong>Dynamic Allocation:</strong> You receive tokens at the final clearing price (likely lower than your max)</li>
+                  <li><strong>Refunds:</strong> Any unused ETH is automatically refunded when you claim</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className={`font-semibold ${theme.textPrimary} mb-2`}>📊 Clearing Price</h4>
+                <p>
+                  The clearing price starts at the floor price and increases as more bids come in. It represents
+                  the current market-clearing price where supply meets demand. Everyone who bid above this price
+                  gets tokens at this price.
+                </p>
+              </div>
+
+              <div>
+                <h4 className={`font-semibold ${theme.textPrimary} mb-2`}>🔄 Price Updates</h4>
+                <p>
+                  The clearing price updates continuously throughout the auction as new bids are submitted.
+                  Watch the "Current Price" metric to see real-time market demand.
+                </p>
+              </div>
+
+              <div>
+                <h4 className={`font-semibold ${theme.textPrimary} mb-2`}>✅ Claiming Your Tokens</h4>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>After the auction ends, there's a claim period</li>
+                  <li>Exit your bid first to calculate your final allocation</li>
+                  <li>Then claim your tokens at the final clearing price</li>
+                  <li>Any overpayment is refunded automatically</li>
+                </ul>
+              </div>
+
+              <div className="mt-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                <p className="text-sm">
+                  <strong>💡 Pro Tip:</strong> Bid early with your maximum acceptable price. The final price
+                  is determined by market demand, so you'll likely pay less than your max price while securing
+                  your allocation.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Timer Section */}
         {theme.showTimer && currentBlock && (
@@ -467,6 +586,29 @@ export default function ParticipatePage() {
               </div>
             )}
 
+            {/* Current Clearing Price - Prominent Display */}
+            {auctionStatus === 'active' && clearingPrice !== undefined && (
+              <div className={`${theme.cardBackground} rounded-2xl shadow-lg p-6 border-2 ${theme.primaryColor.replace('bg-', 'border-')}`}>
+                <div className="text-center">
+                  <div className={`text-sm ${theme.textSecondary} mb-2`}>Current Clearing Price</div>
+                  <div className={`text-4xl font-bold ${theme.textPrimary} mb-2`}>
+                    {formatEther(clearingPrice)} ETH
+                  </div>
+                  <div className={`text-sm ${theme.textSecondary}`}>
+                    per token • Updates every ~12 seconds
+                  </div>
+                  {floorPrice && clearingPrice > floorPrice && (
+                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                      </svg>
+                      {((Number(clearingPrice - floorPrice) / Number(floorPrice)) * 100).toFixed(1)}% above floor
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Key Metrics */}
             <div className={`${theme.cardBackground} rounded-2xl shadow-lg p-6`}>
               <h3 className={`text-lg font-semibold mb-4 ${theme.textPrimary}`}>Auction Details</h3>
@@ -478,43 +620,62 @@ export default function ParticipatePage() {
                   </div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Supply</div>
+                  <div className={`text-sm ${theme.textSecondary}`}>Total Supply</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {totalSupply ? Number(formatEther(totalSupply)).toLocaleString() : '---'}
+                    {totalSupply ? formatNumber(Number(formatEther(totalSupply))) : '---'}
                   </div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Floor Price</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {floorPrice ? `${formatEther(floorPrice)} ETH` : '---'}
+                    {floorPrice ? `${formatEther(floorPrice)}` : '---'}
                   </div>
+                  <div className={`text-xs ${theme.textSecondary}`}>ETH/token</div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Current Price</div>
+                  <div className={`text-sm ${theme.textSecondary}`}>Total Bids</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {clearingPrice ? `${formatEther(clearingPrice)} ETH` : '---'}
+                    {totalBids || '0'}
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Total Raised</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {currencyRaised ? `${Number(formatEther(currencyRaised)).toFixed(4)} ETH` : '---'}
+                    {currencyRaised ? `${Number(formatEther(currencyRaised)).toFixed(4)}` : '---'}
                   </div>
+                  <div className={`text-xs ${theme.textSecondary}`}>ETH</div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Tokens Sold</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {totalCleared ? Number(formatEther(totalCleared)).toLocaleString() : '---'}
+                    {totalCleared ? formatNumber(Number(formatEther(totalCleared))) : '0'}
+                  </div>
+                  <div className={`text-xs ${theme.textSecondary}`}>
+                    {totalSupply && totalCleared ? `${((Number(totalCleared) / Number(totalSupply)) * 100).toFixed(1)}%` : ''}
                   </div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Graduated</div>
-                  <div className={`text-lg font-bold ${isGraduated ? 'text-green-600' : theme.textPrimary}`}>
-                    {isGraduated === undefined ? '---' : isGraduated ? 'Yes' : 'No'}
+                  <div className={`text-sm ${theme.textSecondary}`}>Avg. Price</div>
+                  <div className={`text-lg font-bold ${theme.textPrimary}`}>
+                    {currencyRaised && totalCleared && totalCleared > 0n
+                      ? `${(Number(formatEther(currencyRaised)) / Number(formatEther(totalCleared))).toFixed(6)}`
+                      : '---'}
                   </div>
+                  <div className={`text-xs ${theme.textSecondary}`}>ETH/token</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+                  <div className={`text-sm ${theme.textSecondary}`}>Graduation</div>
+                  <div className={`text-lg font-bold ${isGraduated ? 'text-green-600' : theme.textPrimary}`}>
+                    {isGraduated === undefined ? '---' : isGraduated ? '✓ Yes' : '✗ No'}
+                  </div>
+                  {requiredCurrencyRaised && requiredCurrencyRaised > 0n && (
+                    <div className={`text-xs ${theme.textSecondary}`}>
+                      Min: {formatEther(requiredCurrencyRaised)} ETH
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
