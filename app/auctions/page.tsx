@@ -135,6 +135,7 @@ export default function Auctions() {
   // User bids state
   const [userBids, setUserBids] = useState<UserBid[]>([]);
   const [isLoadingBids, setIsLoadingBids] = useState(false);
+  const [totalBids, setTotalBids] = useState<number>(0);
 
   // Load saved auctions from localStorage
   useEffect(() => {
@@ -237,6 +238,9 @@ export default function Auctions() {
           abi: CCA_AUCTION_ABI,
           functionName: 'nextBidId',
         }) as bigint;
+
+        // Set total bids count
+        setTotalBids(Number(nextBidIdResult));
 
         console.log(`[BidFetch] Total bids in auction: ${nextBidIdResult.toString()}`);
         console.log(`[BidFetch] Looking for bids owned by: ${address}`);
@@ -573,6 +577,26 @@ export default function Auctions() {
                     )}
                   </div>
 
+                  {/* Current Clearing Price - Prominent if Active */}
+                  {auctionStatus === 'active' && clearingPrice && clearingPrice > 0n && (
+                    <div className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Current Clearing Price</p>
+                        <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
+                          {formatEther(clearingPrice as bigint)} ETH
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          per token • Updates every ~12 seconds
+                        </p>
+                        {floorPrice && clearingPrice > floorPrice && (
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                            {((Number(clearingPrice - (floorPrice as bigint)) / Number(floorPrice as bigint)) * 100).toFixed(1)}% above floor
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Key Metrics Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
@@ -582,15 +606,39 @@ export default function Auctions() {
                       </p>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Clearing Price</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">
+                        {clearingPrice ? formatEther(clearingPrice as bigint) : '0'} ETH
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 dark:text-gray-400">Currency Raised</p>
                       <p className="font-semibold text-gray-900 dark:text-white">
                         {currencyRaised ? formatEther(currencyRaised as bigint) : '0'} ETH
                       </p>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Total Bids</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">
+                        {totalBids}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Additional Metrics Row */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 dark:text-gray-400">Required Raise</p>
                       <p className="font-semibold text-gray-900 dark:text-white">
                         {requiredCurrencyRaised ? formatEther(requiredCurrencyRaised as bigint) : '0'} ETH
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Price</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">
+                        {currencyRaised && totalCleared && (totalCleared as bigint) > 0n
+                          ? `${(Number(formatEther(currencyRaised as bigint)) / Number(formatEther(totalCleared as bigint))).toFixed(6)} ETH`
+                          : '---'}
                       </p>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
