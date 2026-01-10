@@ -7,13 +7,13 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
 import { CCA_AUCTION_ABI, ERC20_ABI } from '@/lib/cca-abi';
 
-// Bid type from contract
+// Bid type from contract - matches the bids() return tuple
 interface Bid {
   startBlock: bigint;
-  startCumulativeMps: number;
+  startCumulativeMps: number; // uint24 fits in number
   exitedBlock: bigint;
   maxPrice: bigint;
-  owner: string;
+  owner: `0x${string}`;
   amountQ96: bigint;
   tokensFilled: bigint;
 }
@@ -221,7 +221,7 @@ export default function Auctions() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  // Fetch user bids from BidSubmitted events
+  // Fetch user bids by iterating through bid IDs (more reliable than events)
   useEffect(() => {
     const fetchUserBids = async () => {
       if (!publicClient || !selectedAuction || !address) {
@@ -231,46 +231,54 @@ export default function Auctions() {
 
       setIsLoadingBids(true);
       try {
-        // Get BidSubmitted events for the connected user
-        const logs = await publicClient.getLogs({
+        // Get the total number of bids in this auction
+        const nextBidIdResult = await publicClient.readContract({
           address: selectedAuction as `0x${string}`,
-          event: {
-            type: 'event',
-            name: 'BidSubmitted',
-            inputs: [
-              { name: 'id', type: 'uint256', indexed: true },
-              { name: 'owner', type: 'address', indexed: true },
-              { name: 'price', type: 'uint256', indexed: false },
-              { name: 'amount', type: 'uint128', indexed: false },
-            ],
-          },
-          args: {
-            owner: address,
-          },
-          fromBlock: 'earliest',
-          toBlock: 'latest',
-        });
+          abi: CCA_AUCTION_ABI,
+          functionName: 'nextBidId',
+        }) as bigint;
 
-        // Get bid details for each bid ID
-        const bidPromises = logs.map(async (log) => {
-          const bidId = log.args.id as bigint;
-          try {
-            const bidData = await publicClient.readContract({
-              address: selectedAuction as `0x${string}`,
-              abi: CCA_AUCTION_ABI,
-              functionName: 'bids',
-              args: [bidId],
-            }) as Bid;
-            return { id: bidId, bid: bidData };
-          } catch {
-            return null;
-          }
-        });
+        console.log(`[BidFetch] Total bids in auction: ${nextBidIdResult.toString()}`);
+        console.log(`[BidFetch] Looking for bids owned by: ${address}`);
+
+        // Iterate through all bid IDs and filter by owner
+        const bidPromises: Promise<UserBid | null>[] = [];
+        for (let bidId = 0n; bidId < nextBidIdResult; bidId++) {
+          bidPromises.push(
+            (async () => {
+              try {
+                const bidData = await publicClient.readContract({
+                  address: selectedAuction as `0x${string}`,
+                  abi: CCA_AUCTION_ABI,
+                  functionName: 'bids',
+                  args: [bidId],
+                }) as Bid;
+
+                // Check if this bid belongs to the connected user (case-insensitive)
+                if (bidData.owner.toLowerCase() === address.toLowerCase()) {
+                  console.log(`[BidFetch] Found user bid #${bidId}:`, {
+                    owner: bidData.owner,
+                    maxPrice: bidData.maxPrice.toString(),
+                    amountQ96: bidData.amountQ96.toString(),
+                    tokensFilled: bidData.tokensFilled.toString(),
+                    exitedBlock: bidData.exitedBlock.toString(),
+                  });
+                  return { id: bidId, bid: bidData };
+                }
+                return null;
+              } catch (bidError) {
+                console.error(`[BidFetch] Error reading bid #${bidId}:`, bidError);
+                return null;
+              }
+            })()
+          );
+        }
 
         const bids = (await Promise.all(bidPromises)).filter((b): b is UserBid => b !== null);
+        console.log(`[BidFetch] Successfully loaded ${bids.length} user bids out of ${nextBidIdResult.toString()} total bids`);
         setUserBids(bids);
       } catch (err) {
-        console.error('Error fetching bids:', err);
+        console.error('[BidFetch] Error fetching bids:', err);
         setUserBids([]);
       }
       setIsLoadingBids(false);

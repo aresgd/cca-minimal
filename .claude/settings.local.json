@@ -34,7 +34,8 @@
       "Bash(node -e:*)",
       "Bash(python3:*)",
       "Bash(npm run build:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(tree:*)"
     ]
   }
 }
