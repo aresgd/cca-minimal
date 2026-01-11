@@ -313,9 +313,14 @@ export default function Auctions() {
       const bidAmountWei = parseEther(bidAmount);
       const maxPriceWei = parseEther(maxPrice);
 
-      // Note: The 'amount' parameter takes raw wei, NOT Q96 format.
-      // The contract internally converts to Q96 representation.
+      // IMPORTANT: The 'amount' parameter takes raw wei (uint128), NOT Q96 format.
+      // The contract internally converts to Q96 representation when storing.
       // The amount should match msg.value for native ETH auctions.
+      console.log('[submitBid] Submitting bid:', {
+        maxPrice: maxPriceWei.toString(),
+        amount: bidAmountWei.toString(),
+        value: bidAmountWei.toString(),
+      });
 
       writeContract({
         address: selectedAuction as `0x${string}`,
