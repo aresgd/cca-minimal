@@ -188,6 +188,7 @@ export default function Auctions() {
       { ...auctionContract, functionName: 'currencyRaised' },
       { ...auctionContract, functionName: 'isGraduated' },
       { ...auctionContract, functionName: 'totalCleared' },
+      { ...auctionContract, functionName: 'clearingPrice' },
     ],
     query: { enabled: !!selectedAuction },
   });
@@ -205,6 +206,7 @@ export default function Auctions() {
   const currencyRaised = auctionData?.[9]?.result as bigint | undefined;
   const isGraduated = auctionData?.[10]?.result as boolean | undefined;
   const totalCleared = auctionData?.[11]?.result as bigint | undefined;
+  const clearingPrice = auctionData?.[12]?.result as bigint | undefined;
 
   // Batch read token metadata (only when we have tokenAddress)
   const { data: tokenData } = useReadContracts({
