@@ -136,6 +136,7 @@ export default function Auctions() {
   const [userBids, setUserBids] = useState<UserBid[]>([]);
   const [isLoadingBids, setIsLoadingBids] = useState(false);
   const [totalBids, setTotalBids] = useState<number>(0);
+  const [highestBidPrice, setHighestBidPrice] = useState<bigint | null>(null);
 
   // Load saved auctions from localStorage
   useEffect(() => {
@@ -224,11 +225,12 @@ export default function Auctions() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  // Fetch user bids by iterating through bid IDs (more reliable than events)
+  // Fetch user bids and highest active bid price
   useEffect(() => {
     const fetchUserBids = async () => {
-      if (!publicClient || !selectedAuction || !address) {
+      if (!publicClient || !selectedAuction) {
         setUserBids([]);
+        setHighestBidPrice(null);
         return;
       }
 
@@ -245,10 +247,9 @@ export default function Auctions() {
         setTotalBids(Number(nextBidIdResult));
 
         console.log(`[BidFetch] Total bids in auction: ${nextBidIdResult.toString()}`);
-        console.log(`[BidFetch] Looking for bids owned by: ${address}`);
 
-        // Iterate through all bid IDs and filter by owner
-        const bidPromises: Promise<UserBid | null>[] = [];
+        // Iterate through all bid IDs to find user bids AND track highest active bid
+        const bidPromises: Promise<{ userBid: UserBid | null; bidData: Bid | null }>[] = [];
         for (let bidId = 0n; bidId < nextBidIdResult; bidId++) {
           bidPromises.push(
             (async () => {
@@ -261,7 +262,8 @@ export default function Auctions() {
                 }) as Bid;
 
                 // Check if this bid belongs to the connected user (case-insensitive)
-                if (bidData.owner.toLowerCase() === address.toLowerCase()) {
+                const isUserBid = address && bidData.owner.toLowerCase() === address.toLowerCase();
+                if (isUserBid) {
                   console.log(`[BidFetch] Found user bid #${bidId}:`, {
                     owner: bidData.owner,
                     maxPrice: bidData.maxPrice.toString(),
@@ -269,23 +271,45 @@ export default function Auctions() {
                     tokensFilled: bidData.tokensFilled.toString(),
                     exitedBlock: bidData.exitedBlock.toString(),
                   });
-                  return { id: bidId, bid: bidData };
                 }
-                return null;
+                return {
+                  userBid: isUserBid ? { id: bidId, bid: bidData } : null,
+                  bidData: bidData
+                };
               } catch (bidError) {
                 console.error(`[BidFetch] Error reading bid #${bidId}:`, bidError);
-                return null;
+                return { userBid: null, bidData: null };
               }
             })()
           );
         }
 
-        const bids = (await Promise.all(bidPromises)).filter((b): b is UserBid => b !== null);
+        const results = await Promise.all(bidPromises);
+
+        // Extract user bids
+        const bids = results
+          .map(r => r.userBid)
+          .filter((b): b is UserBid => b !== null);
         console.log(`[BidFetch] Successfully loaded ${bids.length} user bids out of ${nextBidIdResult.toString()} total bids`);
         setUserBids(bids);
+
+        // Find highest active bid price (bids that haven't exited)
+        let maxBidPrice = 0n;
+        for (const result of results) {
+          if (result.bidData && result.bidData.exitedBlock === 0n) {
+            // This is an active bid
+            if (result.bidData.maxPrice > maxBidPrice) {
+              maxBidPrice = result.bidData.maxPrice;
+            }
+          }
+        }
+        setHighestBidPrice(maxBidPrice > 0n ? maxBidPrice : null);
+        console.log(`[BidFetch] Highest active bid price: ${maxBidPrice > 0n ? formatEther(maxBidPrice) + ' ETH' : 'none'}`);
+
       } catch (err) {
         console.error('[BidFetch] Error fetching bids:', err);
         setUserBids([]);
+        setHighestBidPrice(null);
       }
       setIsLoadingBids(false);
     };
@@ -313,26 +337,48 @@ export default function Auctions() {
       const bidAmountWei = parseEther(bidAmount);
       const maxPriceWei = parseEther(maxPrice);
 
-      // IMPORTANT: The 'amount' parameter takes raw wei (uint128), NOT Q96 format.
-      // The contract internally converts to Q96 representation when storing.
-      // The amount should match msg.value for native ETH auctions.
-      console.log('[submitBid] Submitting bid:', {
-        maxPrice: maxPriceWei.toString(),
-        amount: bidAmountWei.toString(),
-        value: bidAmountWei.toString(),
+      // Validate that max price is high enough
+      if (highestBidPrice && maxPriceWei <= highestBidPrice) {
+        alert(`Your max price must be higher than the current highest bid (${formatEther(highestBidPrice)} ETH)`);
+        return;
+      }
+
+      // The prevTickPrice should be the highest existing active bid price
+      // This tells the contract where to insert our bid in the linked list
+      const prevTickPrice = highestBidPrice || 0n;
+
+      console.log('[submitBid] Debug info:', {
+        bidAmount: bidAmount,
+        maxPrice: maxPrice,
+        bidAmountWei: bidAmountWei.toString(),
+        maxPriceWei: maxPriceWei.toString(),
+        prevTickPrice: prevTickPrice.toString(),
+        auctionAddress: selectedAuction,
+        userAddress: address,
+      });
+
+      // Prepare the args array
+      const args: readonly [bigint, bigint, `0x${string}`, bigint, `0x${string}`] = [
+        maxPriceWei,
+        bidAmountWei,
+        address!,
+        prevTickPrice,  // Use the highest existing bid price
+        '0x' as `0x${string}`,
+      ];
+
+      console.log('[submitBid] Args array:', {
+        maxPrice: args[0].toString(),
+        amount: args[1].toString(),
+        owner: args[2],
+        prevTickPrice: args[3].toString(),
+        hookData: args[4],
       });
 
       writeContract({
         address: selectedAuction as `0x${string}`,
         abi: CCA_AUCTION_ABI,
         functionName: 'submitBid',
-        args: [
-          maxPriceWei,
-          bidAmountWei,  // Raw wei amount, same as msg.value
-          address!,
-          0n,  // prevTickPrice - 0 means no preference
-          '0x' as `0x${string}`, // Empty hook data
-        ],
+        args: args,
         value: bidAmountWei,
       });
     } catch (err) {
@@ -774,12 +820,30 @@ export default function Auctions() {
                       </div>
                     </div>
 
+                    {/* Show minimum required bid price */}
+                    {highestBidPrice && highestBidPrice > 0n && (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                        <p className="text-sm text-amber-800 dark:text-amber-300">
+                          <strong>Minimum bid price:</strong>{' '}
+                          {formatEther(highestBidPrice + (tickSpacing || 0n))} ETH per token
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          Your max price must be higher than the current highest bid ({formatEther(highestBidPrice)} ETH)
+                        </p>
+                      </div>
+                    )}
+
                     {bidAmount && maxPrice && (
                       <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <p className="text-sm text-blue-800 dark:text-blue-300">
                           <strong>Estimated tokens:</strong>{' '}
                           {(parseFloat(bidAmount) / parseFloat(maxPrice)).toLocaleString()} tokens at max price
                         </p>
+                        {highestBidPrice && parseEther(maxPrice) <= highestBidPrice && (
+                          <p className="text-sm text-red-600 dark:text-red-400 mt-1 font-medium">
+                            Warning: Your max price is too low. Bid will fail.
+                          </p>
+                        )}
                       </div>
                     )}
 

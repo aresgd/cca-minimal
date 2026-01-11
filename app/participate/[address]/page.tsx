@@ -204,6 +204,7 @@ export default function ParticipatePage() {
   const [isLoadingBids, setIsLoadingBids] = useState(false);
   const [totalBids, setTotalBids] = useState<number>(0);
   const [showCCAInfo, setShowCCAInfo] = useState(false);
+  const [highestBidPrice, setHighestBidPrice] = useState<bigint | null>(null);
 
   // Contract interactions
   const { writeContract: submitBid, data: bidHash, isPending: isBidPending, error: bidError } = useWriteContract();
@@ -234,6 +235,7 @@ export default function ParticipatePage() {
       { ...auctionContract, functionName: 'currencyRaised' },
       { ...auctionContract, functionName: 'totalCleared' },
       { ...auctionContract, functionName: 'isGraduated' },
+      { ...auctionContract, functionName: 'tickSpacing' },
     ],
     query: { enabled: !!auctionAddress },
   });
@@ -250,6 +252,7 @@ export default function ParticipatePage() {
   const currencyRaised = auctionData?.[8]?.result as bigint | undefined;
   const totalCleared = auctionData?.[9]?.result as bigint | undefined;
   const isGraduated = auctionData?.[10]?.result as boolean | undefined;
+  const tickSpacing = auctionData?.[11]?.result as bigint | undefined;
 
   // Activation is determined by whether tokens have been transferred (totalSupply > 0)
   const activated = totalSupply !== undefined && totalSupply > 0n;
@@ -270,82 +273,74 @@ export default function ParticipatePage() {
   // Calculate auction status
   const auctionStatus = getAuctionStatus(activated, startBlock, endBlock, claimBlock, currentBlock);
 
-  // Fetch user bids and total bids
+  // Fetch user bids, total bids, and highest active bid price
   useEffect(() => {
     async function fetchBids() {
-      if (!publicClient || !auctionAddress || !startBlock) return;
+      if (!publicClient || !auctionAddress) {
+        setHighestBidPrice(null);
+        return;
+      }
 
       setIsLoadingBids(true);
       try {
-        // Fetch total bids (all BidSubmitted events)
-        const allBidLogs = await publicClient.getLogs({
+        // Get nextBidId to know total bids
+        const nextBidId = await publicClient.readContract({
           address: auctionAddress as `0x${string}`,
-          event: {
-            type: 'event',
-            name: 'BidSubmitted',
-            inputs: [
-              { type: 'uint256', name: 'id', indexed: true },
-              { type: 'address', name: 'owner', indexed: true },
-              { type: 'uint256', name: 'price' },
-              { type: 'uint128', name: 'amount' },
-            ],
-          },
-          fromBlock: startBlock > 100000n ? startBlock - 100000n : 0n,
-          toBlock: 'latest',
-        });
+          abi: CCA_AUCTION_ABI,
+          functionName: 'nextBidId',
+        }) as bigint;
 
-        setTotalBids(allBidLogs.length);
+        setTotalBids(Number(nextBidId));
 
-        // Fetch user-specific bids if connected
-        if (address) {
-          const userBidLogs = await publicClient.getLogs({
-            address: auctionAddress as `0x${string}`,
-            event: {
-              type: 'event',
-              name: 'BidSubmitted',
-              inputs: [
-                { type: 'uint256', name: 'id', indexed: true },
-                { type: 'address', name: 'owner', indexed: true },
-                { type: 'uint256', name: 'price' },
-                { type: 'uint128', name: 'amount' },
-              ],
-            },
-            args: { owner: address },
-            fromBlock: startBlock > 100000n ? startBlock - 100000n : 0n,
-            toBlock: 'latest',
-          });
+        // Iterate through all bids to find user bids and highest active bid
+        let maxBidPrice = 0n;
+        const userBidsList: UserBid[] = [];
 
-          const bids: UserBid[] = await Promise.all(
-            userBidLogs.map(async (log) => {
-              const bidId = log.args.id as bigint;
-              const bidData = await publicClient.readContract({
-                address: auctionAddress as `0x${string}`,
-                abi: CCA_AUCTION_ABI,
-                functionName: 'bids',
-                args: [bidId],
-              }) as Bid;
+        for (let bidId = 0n; bidId < nextBidId; bidId++) {
+          try {
+            const bidData = await publicClient.readContract({
+              address: auctionAddress as `0x${string}`,
+              abi: CCA_AUCTION_ABI,
+              functionName: 'bids',
+              args: [bidId],
+            }) as Bid;
 
-              return {
+            // Track highest active bid price
+            if (bidData.exitedBlock === 0n && bidData.maxPrice > maxBidPrice) {
+              maxBidPrice = bidData.maxPrice;
+            }
+
+            // Check if this bid belongs to connected user
+            if (address && bidData.owner.toLowerCase() === address.toLowerCase()) {
+              // Calculate amount from amountQ96
+              const amountWei = bidData.amountQ96 / (2n ** 96n);
+              userBidsList.push({
                 bidId,
-                amount: log.args.amount as bigint,
+                amount: amountWei,
                 maxPrice: bidData.maxPrice,
                 tokensFilled: bidData.tokensFilled,
                 isExited: bidData.exitedBlock > 0n,
-              };
-            })
-          );
-
-          setUserBids(bids);
+              });
+            }
+          } catch (bidError) {
+            console.error(`Error reading bid #${bidId}:`, bidError);
+          }
         }
+
+        setUserBids(userBidsList);
+        setHighestBidPrice(maxBidPrice > 0n ? maxBidPrice : null);
+        console.log(`[BidFetch] Highest active bid price: ${maxBidPrice > 0n ? formatEther(maxBidPrice) + ' ETH' : 'none'}`);
+
       } catch (error) {
         console.error('Error fetching bids:', error);
+        setHighestBidPrice(null);
       } finally {
         setIsLoadingBids(false);
       }
     }
 
     fetchBids();
-  }, [publicClient, address, auctionAddress, startBlock, isBidSuccess, isExitSuccess, isClaimSuccess]);
+  }, [publicClient, address, auctionAddress, isBidSuccess, isExitSuccess, isClaimSuccess]);
 
   // Handle bid submission
   const handleSubmitBid = () => {
@@ -354,13 +349,30 @@ export default function ParticipatePage() {
     const bidAmountWei = parseEther(bidAmount);
     const maxPriceWei = parseEther(maxPrice);
 
+    // Validate that max price is high enough
+    if (highestBidPrice && maxPriceWei <= highestBidPrice) {
+      alert(`Your max price must be higher than the current highest bid (${formatEther(highestBidPrice)} ETH)`);
+      return;
+    }
+
+    // The prevTickPrice should be the highest existing active bid price
+    const prevTickPrice = highestBidPrice || 0n;
+
+    console.log('[submitBid] Debug info:', {
+      bidAmount,
+      maxPrice,
+      bidAmountWei: bidAmountWei.toString(),
+      maxPriceWei: maxPriceWei.toString(),
+      prevTickPrice: prevTickPrice.toString(),
+    });
+
     // Note: amount is passed as raw wei (uint128), NOT Q96 format
     // The contract internally converts to Q96 when storing the bid
     submitBid({
       address: auctionAddress as `0x${string}`,
       abi: CCA_AUCTION_ABI,
       functionName: 'submitBid',
-      args: [maxPriceWei, bidAmountWei, address!, 0n as bigint, '0x' as `0x${string}`],
+      args: [maxPriceWei, bidAmountWei, address!, prevTickPrice, '0x' as `0x${string}`],
       value: bidAmountWei,
     });
   };
@@ -796,6 +808,19 @@ export default function ParticipatePage() {
                     </p>
                   </div>
 
+                  {/* Minimum bid price warning */}
+                  {highestBidPrice && highestBidPrice > 0n && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                      <p className={`text-sm text-amber-800 dark:text-amber-300`}>
+                        <strong>Minimum bid price:</strong>{' '}
+                        {formatEther(highestBidPrice + (tickSpacing || 0n))} ETH per token
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        Your max price must be higher than the current highest bid ({formatEther(highestBidPrice)} ETH)
+                      </p>
+                    </div>
+                  )}
+
                   {/* Estimate */}
                   {bidAmount && maxPrice && (
                     <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
@@ -803,6 +828,11 @@ export default function ParticipatePage() {
                       <div className={`text-xl font-bold ${theme.textPrimary}`}>
                         ~{(parseFloat(bidAmount) / parseFloat(maxPrice)).toLocaleString()} {tokenSymbol || 'tokens'}
                       </div>
+                      {highestBidPrice && parseEther(maxPrice) <= highestBidPrice && (
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1 font-medium">
+                          Warning: Your max price is too low. Bid will fail.
+                        </p>
+                      )}
                     </div>
                   )}
 
