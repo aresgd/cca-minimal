@@ -181,6 +181,7 @@ export const CCA_AUCTION_ABI = [
       { name: 'maxPrice', type: 'uint256' },
       { name: 'amount', type: 'uint128' },
       { name: 'owner', type: 'address' },
+      { name: 'prevTickPrice', type: 'uint256' },
       { name: 'hookData', type: 'bytes' },
     ],
     outputs: [{ name: 'bidId', type: 'uint256' }],

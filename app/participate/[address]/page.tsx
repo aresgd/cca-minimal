@@ -360,7 +360,7 @@ export default function ParticipatePage() {
       address: auctionAddress as `0x${string}`,
       abi: CCA_AUCTION_ABI,
       functionName: 'submitBid',
-      args: [maxPriceWei, bidAmountWei, address!, '0x' as `0x${string}`],
+      args: [maxPriceWei, bidAmountWei, address!, 0n as bigint, '0x' as `0x${string}`],
       value: bidAmountWei,
     });
   };

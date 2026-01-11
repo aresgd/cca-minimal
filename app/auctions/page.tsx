@@ -330,6 +330,7 @@ export default function Auctions() {
           maxPriceWei,
           bidAmountWei,  // Raw wei amount, same as msg.value
           address!,
+          0n,  // prevTickPrice - 0 means no preference
           '0x' as `0x${string}`, // Empty hook data
         ],
         value: bidAmountWei,

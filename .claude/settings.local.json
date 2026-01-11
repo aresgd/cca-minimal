@@ -35,7 +35,8 @@
       "Bash(python3:*)",
       "Bash(npm run build:*)",
       "Bash(git push:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(git diff:*)"
     ]
   }
 }
