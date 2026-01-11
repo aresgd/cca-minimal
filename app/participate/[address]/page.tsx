@@ -354,11 +354,14 @@ export default function ParticipatePage() {
     const bidAmountWei = parseEther(bidAmount);
     const maxPriceWei = parseEther(maxPrice);
 
+    // Convert amount to Q96 format: amountQ96 = wei_amount * 2^96
+    const amountQ96 = bidAmountWei * (2n ** 96n);
+
     submitBid({
       address: auctionAddress as `0x${string}`,
       abi: CCA_AUCTION_ABI,
       functionName: 'submitBid',
-      args: [maxPriceWei, bidAmountWei, address!, '0x' as `0x${string}`],
+      args: [maxPriceWei, amountQ96, address!, '0x' as `0x${string}`],
       value: bidAmountWei,
     });
   };
