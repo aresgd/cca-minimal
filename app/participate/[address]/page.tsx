@@ -583,9 +583,34 @@ export default function ParticipatePage() {
             {auctionStatus === 'claimable' && (
               <div className="text-center">
                 <div className="text-xs text-gray-500 mb-1">Status</div>
-                <div className="text-2xl font-bold text-green-600">Claims are open!</div>
+                <div className={`text-2xl font-bold ${isGraduated ? 'text-green-600' : 'text-red-600'}`}>
+                  {isGraduated ? 'Claims are open!' : 'Auction Failed - Refunds Available'}
+                </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Failed Auction Warning Banner */}
+        {(auctionStatus === 'ended' || auctionStatus === 'claimable') && isGraduated === false && (
+          <div className="mb-8 p-6 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-2xl">
+            <div className="flex items-start gap-4">
+              <span className="text-3xl">⚠️</span>
+              <div>
+                <h3 className={`text-xl font-bold text-red-800 dark:text-red-300`}>
+                  Auction Did Not Graduate
+                </h3>
+                <p className="text-red-700 dark:text-red-400 mt-2">
+                  This auction did not meet its fundraising requirements. All bidders receive <strong>full ETH refunds</strong> - no tokens are distributed.
+                </p>
+                <p className="text-sm text-red-600 dark:text-red-500 mt-3">
+                  Currency raised: {currencyRaised ? formatEther(currencyRaised) : '0'} ETH
+                  {requiredCurrencyRaised && requiredCurrencyRaised > 0n && (
+                    <> • Required: {formatEther(requiredCurrencyRaised)} ETH</>
+                  )}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -663,12 +688,18 @@ export default function ParticipatePage() {
                   <div className={`text-xs ${theme.textSecondary}`}>ETH</div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Tokens Sold</div>
-                  <div className={`text-lg font-bold ${theme.textPrimary}`}>
+                  <div className={`text-sm ${theme.textSecondary}`}>
+                    {isGraduated ? 'Tokens Distributed' : 'Tokens Cleared'}
+                  </div>
+                  <div className={`text-lg font-bold ${isGraduated === false ? 'text-gray-400' : theme.textPrimary}`}>
                     {totalCleared ? formatNumber(Number(formatEther(totalCleared))) : '0'}
                   </div>
-                  <div className={`text-xs ${theme.textSecondary}`}>
-                    {totalSupply && totalCleared ? `${((Number(totalCleared) / Number(totalSupply)) * 100).toFixed(1)}%` : ''}
+                  <div className={`text-xs ${isGraduated === false ? 'text-red-500' : theme.textSecondary}`}>
+                    {isGraduated === false
+                      ? 'Not distributed'
+                      : totalSupply && totalCleared
+                        ? `${((Number(totalCleared) / Number(totalSupply)) * 100).toFixed(1)}%`
+                        : ''}
                   </div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">

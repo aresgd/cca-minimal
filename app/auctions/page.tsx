@@ -610,27 +610,59 @@ export default function Auctions() {
                     </p>
                   </div>
 
-                  {/* Progress Bar */}
+                  {/* Failed Auction Warning */}
+                  {(auctionStatus === 'ended' || auctionStatus === 'claimable') && isGraduated === false && (
+                    <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">⚠️</span>
+                        <div>
+                          <h4 className="font-bold text-red-800 dark:text-red-300">Auction Did Not Graduate</h4>
+                          <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+                            This auction did not meet its fundraising requirements. All bidders receive full ETH refunds - no tokens are distributed.
+                          </p>
+                          <p className="text-xs text-red-600 dark:text-red-500 mt-2">
+                            Currency raised: {currencyRaised ? formatEther(currencyRaised as bigint) : '0'} ETH
+                            {requiredCurrencyRaised && requiredCurrencyRaised > 0n && (
+                              <> / Required: {formatEther(requiredCurrencyRaised as bigint)} ETH</>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Progress Bar - Auction Progression */}
                   <div className="mb-6">
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-600 dark:text-gray-400">Tokens Sold</span>
+                      <span className="text-gray-600 dark:text-gray-400">
+                        {isGraduated ? 'Tokens Distributed' : 'Auction Progress'}
+                      </span>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {progressPercent.toFixed(1)}%
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                       <div
-                        className="bg-indigo-600 h-2 rounded-full transition-all"
+                        className={`h-2 rounded-full transition-all ${
+                          isGraduated === false && (auctionStatus === 'ended' || auctionStatus === 'claimable')
+                            ? 'bg-gray-400'
+                            : 'bg-indigo-600'
+                        }`}
                         style={{ width: `${Math.min(progressPercent, 100)}%` }}
                       />
                     </div>
                     <div className="flex justify-between text-xs mt-1 text-gray-500">
-                      <span>{totalCleared ? formatEther(totalCleared as bigint) : '0'} sold</span>
+                      <span>{totalCleared ? formatEther(totalCleared as bigint) : '0'} cleared</span>
                       <span>{totalSupply ? formatEther(totalSupply as bigint) : '0'} total</span>
                     </div>
+                    {isGraduated === false && (auctionStatus === 'ended' || auctionStatus === 'claimable') && (
+                      <p className="text-xs text-red-500 dark:text-red-400 mt-2 italic">
+                        * Auction failed - "cleared" tokens were not distributed to bidders
+                      </p>
+                    )}
                     {totalCleared === 0n && auctionStatus === 'active' && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
-                        * Tokens sold updates when checkpoint() is called on the contract
+                        * Progress updates when checkpoint() is called on the contract
                       </p>
                     )}
                   </div>
