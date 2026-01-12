@@ -205,6 +205,7 @@ export default function ParticipatePage() {
   const [totalBids, setTotalBids] = useState<number>(0);
   const [showCCAInfo, setShowCCAInfo] = useState(false);
   const [highestBidPrice, setHighestBidPrice] = useState<bigint | null>(null);
+  const [contractBalance, setContractBalance] = useState<bigint | null>(null);
 
   // Contract interactions
   const { writeContract: submitBid, data: bidHash, isPending: isBidPending, error: bidError } = useWriteContract();
@@ -278,11 +279,18 @@ export default function ParticipatePage() {
     async function fetchBids() {
       if (!publicClient || !auctionAddress) {
         setHighestBidPrice(null);
+        setContractBalance(null);
         return;
       }
 
       setIsLoadingBids(true);
       try {
+        // Get contract ETH balance (actual funds deposited)
+        const balance = await publicClient.getBalance({
+          address: auctionAddress as `0x${string}`,
+        });
+        setContractBalance(balance);
+
         // Get nextBidId to know total bids
         const nextBidId = await publicClient.readContract({
           address: auctionAddress as `0x${string}`,
@@ -683,9 +691,9 @@ export default function ParticipatePage() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Total Raised</div>
+                  <div className={`text-sm ${theme.textSecondary}`}>Total Deposited</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {currencyRaised ? `${Number(formatEther(currencyRaised)).toFixed(4)}` : '---'}
+                    {contractBalance !== null ? `${Number(formatEther(contractBalance)).toFixed(4)}` : '---'}
                   </div>
                   <div className={`text-xs ${theme.textSecondary}`}>ETH</div>
                 </div>
@@ -707,8 +715,8 @@ export default function ParticipatePage() {
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Avg. Price</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {currencyRaised && totalCleared && totalCleared > 0n
-                      ? `${(Number(formatEther(currencyRaised)) / Number(formatEther(totalCleared))).toFixed(6)}`
+                    {contractBalance && totalCleared && totalCleared > 0n
+                      ? `${(Number(formatEther(contractBalance)) / Number(formatEther(totalCleared))).toFixed(6)}`
                       : '---'}
                   </div>
                   <div className={`text-xs ${theme.textSecondary}`}>ETH/token</div>

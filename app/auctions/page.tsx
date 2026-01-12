@@ -137,6 +137,7 @@ export default function Auctions() {
   const [isLoadingBids, setIsLoadingBids] = useState(false);
   const [totalBids, setTotalBids] = useState<number>(0);
   const [highestBidPrice, setHighestBidPrice] = useState<bigint | null>(null);
+  const [contractBalance, setContractBalance] = useState<bigint | null>(null);
 
   // Load saved auctions from localStorage
   useEffect(() => {
@@ -231,11 +232,18 @@ export default function Auctions() {
       if (!publicClient || !selectedAuction) {
         setUserBids([]);
         setHighestBidPrice(null);
+        setContractBalance(null);
         return;
       }
 
       setIsLoadingBids(true);
       try {
+        // Get contract ETH balance (actual funds deposited)
+        const balance = await publicClient.getBalance({
+          address: selectedAuction as `0x${string}`,
+        });
+        setContractBalance(balance);
+
         // Get the total number of bids in this auction
         const nextBidIdResult = await publicClient.readContract({
           address: selectedAuction as `0x${string}`,
@@ -703,9 +711,9 @@ export default function Auctions() {
                       </p>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Currency Raised</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Total Deposited</p>
                       <p className="font-semibold text-gray-900 dark:text-white">
-                        {currencyRaised ? formatEther(currencyRaised as bigint) : '0'} ETH
+                        {contractBalance !== null ? formatEther(contractBalance) : '0'} ETH
                       </p>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
@@ -727,8 +735,8 @@ export default function Auctions() {
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
                       <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Price</p>
                       <p className="font-semibold text-gray-900 dark:text-white">
-                        {currencyRaised && totalCleared && (totalCleared as bigint) > 0n
-                          ? `${(Number(formatEther(currencyRaised as bigint)) / Number(formatEther(totalCleared as bigint))).toFixed(6)} ETH`
+                        {contractBalance && totalCleared && (totalCleared as bigint) > 0n
+                          ? `${(Number(formatEther(contractBalance)) / Number(formatEther(totalCleared as bigint))).toFixed(6)} ETH`
                           : '---'}
                       </p>
                     </div>
