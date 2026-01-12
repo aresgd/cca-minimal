@@ -343,9 +343,10 @@ export default function Auctions() {
         return;
       }
 
-      // The prevTickPrice should be the highest existing active bid price
-      // This tells the contract where to insert our bid in the linked list
-      const prevTickPrice = highestBidPrice || 0n;
+      // The prevTickPrice should be:
+      // - floorPrice when orderbook is empty (contract uses floorPrice as anchor)
+      // - Highest existing active bid price when bids exist
+      const prevTickPrice = highestBidPrice || floorPrice || 0n;
 
       console.log('[submitBid] Debug info:', {
         bidAmount: bidAmount,

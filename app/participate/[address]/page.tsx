@@ -355,8 +355,10 @@ export default function ParticipatePage() {
       return;
     }
 
-    // The prevTickPrice should be the highest existing active bid price
-    const prevTickPrice = highestBidPrice || 0n;
+    // The prevTickPrice should be:
+    // - floorPrice when no existing bids (empty orderbook uses floorPrice as anchor)
+    // - The highest existing active bid price when bids exist
+    const prevTickPrice = highestBidPrice || floorPrice || 0n;
 
     console.log('[submitBid] Debug info:', {
       bidAmount,
