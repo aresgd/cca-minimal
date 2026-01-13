@@ -161,21 +161,32 @@ function BidPriceHistogram({
     );
   }
 
-  // Calculate histogram buckets
-  const NUM_BUCKETS = 8;
-  const prices = bidPrices.map(b => Number(formatEther(b.price)));
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
+  // Calculate histogram range - include floor price so it's always visible
+  const NUM_BUCKETS = 10;
+  const bidPriceNums = bidPrices.map(b => Number(formatEther(b.price)));
+  const floorPriceNum = floorPrice ? Number(formatEther(floorPrice)) : null;
+  const clearingPriceNum = clearingPrice ? Number(formatEther(clearingPrice)) : null;
 
-  // If all bids at same price, show a single bar
-  const priceRange = maxPrice - minPrice;
-  const bucketSize = priceRange > 0 ? priceRange / NUM_BUCKETS : 1;
+  // Determine chart range to include floor, clearing, and all bids
+  const allPrices = [...bidPriceNums];
+  if (floorPriceNum !== null) allPrices.push(floorPriceNum);
+  if (clearingPriceNum !== null && clearingPriceNum > 0) allPrices.push(clearingPriceNum);
 
-  // Create buckets with ETH amounts
+  const chartMin = Math.min(...allPrices);
+  const chartMax = Math.max(...allPrices);
+
+  // Add some padding to the range (10% on each side)
+  const padding = (chartMax - chartMin) * 0.1 || chartMin * 0.1 || 0.00001;
+  const rangeMin = Math.max(0, chartMin - padding);
+  const rangeMax = chartMax + padding;
+  const priceRange = rangeMax - rangeMin;
+  const bucketSize = priceRange / NUM_BUCKETS;
+
+  // Create buckets
   const buckets: {min: number, max: number, totalEth: number, bidCount: number}[] = [];
   for (let i = 0; i < NUM_BUCKETS; i++) {
-    const bucketMin = minPrice + (i * bucketSize);
-    const bucketMax = minPrice + ((i + 1) * bucketSize);
+    const bucketMin = rangeMin + (i * bucketSize);
+    const bucketMax = rangeMin + ((i + 1) * bucketSize);
     buckets.push({ min: bucketMin, max: bucketMax, totalEth: 0, bidCount: 0 });
   }
 
@@ -183,11 +194,9 @@ function BidPriceHistogram({
   for (const bid of bidPrices) {
     const price = Number(formatEther(bid.price));
     const amount = Number(formatEther(bid.amount));
-    let bucketIndex = priceRange > 0
-      ? Math.floor((price - minPrice) / bucketSize)
-      : 0;
-    // Handle edge case where price equals maxPrice
+    let bucketIndex = Math.floor((price - rangeMin) / bucketSize);
     if (bucketIndex >= NUM_BUCKETS) bucketIndex = NUM_BUCKETS - 1;
+    if (bucketIndex < 0) bucketIndex = 0;
     buckets[bucketIndex].totalEth += amount;
     buckets[bucketIndex].bidCount += 1;
   }
@@ -195,13 +204,9 @@ function BidPriceHistogram({
   // Find max ETH for scaling
   const maxEth = Math.max(...buckets.map(b => b.totalEth));
 
-  // Calculate marker positions
-  const floorPriceNum = floorPrice ? Number(formatEther(floorPrice)) : null;
-  const clearingPriceNum = clearingPrice ? Number(formatEther(clearingPrice)) : null;
-
+  // Calculate marker positions as percentage
   const getMarkerPosition = (price: number) => {
-    if (priceRange === 0) return 50;
-    return ((price - minPrice) / priceRange) * 100;
+    return ((price - rangeMin) / priceRange) * 100;
   };
 
   return (
@@ -211,45 +216,54 @@ function BidPriceHistogram({
         <span>{bidPrices.length} active bids</span>
       </div>
 
-      {/* Histogram bars */}
-      <div className="relative h-24 flex items-end gap-0.5">
+      {/* Histogram bars with markers */}
+      <div className="relative h-28 flex items-end gap-0.5 pt-6">
         {buckets.map((bucket, i) => {
           const heightPercent = maxEth > 0 ? (bucket.totalEth / maxEth) * 100 : 0;
           return (
             <div
               key={i}
-              className="flex-1 flex flex-col items-center justify-end"
-              title={`${bucket.bidCount} bids, ${bucket.totalEth.toFixed(4)} ETH at ${bucket.min.toFixed(6)}-${bucket.max.toFixed(6)} ETH/token`}
+              className="flex-1 flex flex-col items-center justify-end h-full"
+              title={bucket.bidCount > 0
+                ? `${bucket.bidCount} bid${bucket.bidCount > 1 ? 's' : ''}, ${bucket.totalEth.toFixed(4)} ETH\nPrice range: ${bucket.min.toFixed(6)} - ${bucket.max.toFixed(6)} ETH/token`
+                : `Price range: ${bucket.min.toFixed(6)} - ${bucket.max.toFixed(6)} ETH/token`
+              }
             >
               <div
-                className={`w-full ${theme.primaryColor} rounded-t transition-all hover:opacity-80`}
-                style={{ height: `${Math.max(heightPercent, bucket.totalEth > 0 ? 4 : 0)}%` }}
+                className={`w-full rounded-t transition-all ${
+                  bucket.totalEth > 0
+                    ? `${theme.primaryColor} hover:opacity-80`
+                    : 'bg-gray-200 dark:bg-gray-600'
+                }`}
+                style={{
+                  height: bucket.totalEth > 0
+                    ? `${Math.max(heightPercent, 8)}%`
+                    : '2px'
+                }}
               />
             </div>
           );
         })}
 
         {/* Floor Price marker */}
-        {floorPriceNum !== null && floorPriceNum >= minPrice && floorPriceNum <= maxPrice && (
+        {floorPriceNum !== null && (
           <div
-            className="absolute bottom-0 top-0 w-0.5 bg-yellow-500 z-10"
+            className="absolute bottom-0 top-0 w-0.5 bg-yellow-500 z-10 pointer-events-none"
             style={{ left: `${getMarkerPosition(floorPriceNum)}%` }}
-            title={`Floor Price: ${floorPriceNum.toFixed(6)} ETH`}
           >
-            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-yellow-600 dark:text-yellow-400 whitespace-nowrap font-medium">
+            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 text-xs text-yellow-600 dark:text-yellow-400 whitespace-nowrap font-medium bg-white dark:bg-gray-800 px-1 rounded">
               Floor
             </div>
           </div>
         )}
 
         {/* Clearing Price marker */}
-        {clearingPriceNum !== null && clearingPriceNum >= minPrice && clearingPriceNum <= maxPrice && (
+        {clearingPriceNum !== null && clearingPriceNum > 0 && (
           <div
-            className="absolute bottom-0 top-0 w-0.5 bg-green-500 z-10"
+            className="absolute bottom-0 top-0 w-0.5 bg-green-500 z-10 pointer-events-none"
             style={{ left: `${getMarkerPosition(clearingPriceNum)}%` }}
-            title={`Clearing Price: ${clearingPriceNum.toFixed(6)} ETH`}
           >
-            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-green-600 dark:text-green-400 whitespace-nowrap font-medium">
+            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 text-xs text-green-600 dark:text-green-400 whitespace-nowrap font-medium bg-white dark:bg-gray-800 px-1 rounded">
               Clear
             </div>
           </div>
@@ -258,12 +272,12 @@ function BidPriceHistogram({
 
       {/* X-axis labels */}
       <div className={`flex justify-between text-xs ${theme.textSecondary}`}>
-        <span>{minPrice.toFixed(6)}</span>
-        <span>{maxPrice.toFixed(6)}</span>
+        <span>{rangeMin.toFixed(6)}</span>
+        <span>{rangeMax.toFixed(6)}</span>
       </div>
 
       {/* Legend */}
-      <div className="flex gap-4 justify-center text-xs mt-2">
+      <div className="flex gap-4 justify-center text-xs mt-1">
         {floorPriceNum !== null && (
           <div className="flex items-center gap-1">
             <div className="w-3 h-0.5 bg-yellow-500"></div>
