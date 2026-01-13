@@ -141,6 +141,146 @@ function CountdownTimer({ targetBlock, currentBlock, label }: {
   );
 }
 
+// Bid Price Distribution Histogram Component
+function BidPriceHistogram({
+  bidPrices,
+  floorPrice,
+  clearingPrice,
+  theme
+}: {
+  bidPrices: {price: bigint, amount: bigint}[];
+  floorPrice: bigint | undefined;
+  clearingPrice: bigint | undefined;
+  theme: AuctionTheme;
+}) {
+  if (bidPrices.length === 0) {
+    return (
+      <div className={`text-center py-4 ${theme.textSecondary} text-sm`}>
+        No active bids to display
+      </div>
+    );
+  }
+
+  // Calculate histogram buckets
+  const NUM_BUCKETS = 8;
+  const prices = bidPrices.map(b => Number(formatEther(b.price)));
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+
+  // If all bids at same price, show a single bar
+  const priceRange = maxPrice - minPrice;
+  const bucketSize = priceRange > 0 ? priceRange / NUM_BUCKETS : 1;
+
+  // Create buckets with ETH amounts
+  const buckets: {min: number, max: number, totalEth: number, bidCount: number}[] = [];
+  for (let i = 0; i < NUM_BUCKETS; i++) {
+    const bucketMin = minPrice + (i * bucketSize);
+    const bucketMax = minPrice + ((i + 1) * bucketSize);
+    buckets.push({ min: bucketMin, max: bucketMax, totalEth: 0, bidCount: 0 });
+  }
+
+  // Assign bids to buckets
+  for (const bid of bidPrices) {
+    const price = Number(formatEther(bid.price));
+    const amount = Number(formatEther(bid.amount));
+    let bucketIndex = priceRange > 0
+      ? Math.floor((price - minPrice) / bucketSize)
+      : 0;
+    // Handle edge case where price equals maxPrice
+    if (bucketIndex >= NUM_BUCKETS) bucketIndex = NUM_BUCKETS - 1;
+    buckets[bucketIndex].totalEth += amount;
+    buckets[bucketIndex].bidCount += 1;
+  }
+
+  // Find max ETH for scaling
+  const maxEth = Math.max(...buckets.map(b => b.totalEth));
+
+  // Calculate marker positions
+  const floorPriceNum = floorPrice ? Number(formatEther(floorPrice)) : null;
+  const clearingPriceNum = clearingPrice ? Number(formatEther(clearingPrice)) : null;
+
+  const getMarkerPosition = (price: number) => {
+    if (priceRange === 0) return 50;
+    return ((price - minPrice) / priceRange) * 100;
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className={`flex justify-between text-xs ${theme.textSecondary} mb-1`}>
+        <span>Price Distribution (ETH per token)</span>
+        <span>{bidPrices.length} active bids</span>
+      </div>
+
+      {/* Histogram bars */}
+      <div className="relative h-24 flex items-end gap-0.5">
+        {buckets.map((bucket, i) => {
+          const heightPercent = maxEth > 0 ? (bucket.totalEth / maxEth) * 100 : 0;
+          return (
+            <div
+              key={i}
+              className="flex-1 flex flex-col items-center justify-end"
+              title={`${bucket.bidCount} bids, ${bucket.totalEth.toFixed(4)} ETH at ${bucket.min.toFixed(6)}-${bucket.max.toFixed(6)} ETH/token`}
+            >
+              <div
+                className={`w-full ${theme.primaryColor} rounded-t transition-all hover:opacity-80`}
+                style={{ height: `${Math.max(heightPercent, bucket.totalEth > 0 ? 4 : 0)}%` }}
+              />
+            </div>
+          );
+        })}
+
+        {/* Floor Price marker */}
+        {floorPriceNum !== null && floorPriceNum >= minPrice && floorPriceNum <= maxPrice && (
+          <div
+            className="absolute bottom-0 top-0 w-0.5 bg-yellow-500 z-10"
+            style={{ left: `${getMarkerPosition(floorPriceNum)}%` }}
+            title={`Floor Price: ${floorPriceNum.toFixed(6)} ETH`}
+          >
+            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-yellow-600 dark:text-yellow-400 whitespace-nowrap font-medium">
+              Floor
+            </div>
+          </div>
+        )}
+
+        {/* Clearing Price marker */}
+        {clearingPriceNum !== null && clearingPriceNum >= minPrice && clearingPriceNum <= maxPrice && (
+          <div
+            className="absolute bottom-0 top-0 w-0.5 bg-green-500 z-10"
+            style={{ left: `${getMarkerPosition(clearingPriceNum)}%` }}
+            title={`Clearing Price: ${clearingPriceNum.toFixed(6)} ETH`}
+          >
+            <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-green-600 dark:text-green-400 whitespace-nowrap font-medium">
+              Clear
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* X-axis labels */}
+      <div className={`flex justify-between text-xs ${theme.textSecondary}`}>
+        <span>{minPrice.toFixed(6)}</span>
+        <span>{maxPrice.toFixed(6)}</span>
+      </div>
+
+      {/* Legend */}
+      <div className="flex gap-4 justify-center text-xs mt-2">
+        {floorPriceNum !== null && (
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 bg-yellow-500"></div>
+            <span className={theme.textSecondary}>Floor: {floorPriceNum.toFixed(6)}</span>
+          </div>
+        )}
+        {clearingPriceNum !== null && clearingPriceNum > 0 && (
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-0.5 bg-green-500"></div>
+            <span className={theme.textSecondary}>Clearing: {clearingPriceNum.toFixed(6)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Progress Bar Component
 function ProgressBar({ raised, goal, theme }: {
   raised: bigint;
@@ -206,6 +346,8 @@ export default function ParticipatePage() {
   const [showCCAInfo, setShowCCAInfo] = useState(false);
   const [highestBidPrice, setHighestBidPrice] = useState<bigint | null>(null);
   const [contractBalance, setContractBalance] = useState<bigint | null>(null);
+  // All active bid prices for histogram (price in wei, amount in wei)
+  const [allBidPrices, setAllBidPrices] = useState<{price: bigint, amount: bigint}[]>([]);
 
   // Contract interactions
   const { writeContract: submitBid, data: bidHash, isPending: isBidPending, error: bidError } = useWriteContract();
@@ -288,6 +430,7 @@ export default function ParticipatePage() {
         console.log('[ParticipatePage] Missing publicClient or auctionAddress, skipping');
         setHighestBidPrice(null);
         setContractBalance(null);
+        setAllBidPrices([]);
         return;
       }
 
@@ -317,6 +460,7 @@ export default function ParticipatePage() {
         // Iterate through all bids to find user bids and highest active bid
         let maxBidPrice = 0n;
         const userBidsList: UserBid[] = [];
+        const activeBidPrices: {price: bigint, amount: bigint}[] = [];
 
         for (let bidId = 0n; bidId < nextBidId; bidId++) {
           try {
@@ -327,9 +471,17 @@ export default function ParticipatePage() {
               args: [bidId],
             }) as Bid;
 
-            // Track highest active bid price
-            if (bidData.exitedBlock === 0n && bidData.maxPrice > maxBidPrice) {
-              maxBidPrice = bidData.maxPrice;
+            // Track highest active bid price and collect for histogram
+            if (bidData.exitedBlock === 0n) {
+              if (bidData.maxPrice > maxBidPrice) {
+                maxBidPrice = bidData.maxPrice;
+              }
+              // Collect bid price and amount for histogram
+              const amountWei = bidData.amountQ96 / (2n ** 96n);
+              activeBidPrices.push({
+                price: bidData.maxPrice,
+                amount: amountWei
+              });
             }
 
             // Check if this bid belongs to connected user
@@ -350,13 +502,16 @@ export default function ParticipatePage() {
         }
 
         console.log(`[ParticipatePage] Found ${userBidsList.length} user bids out of ${nextBidId.toString()} total`);
+        console.log(`[ParticipatePage] Collected ${activeBidPrices.length} active bids for histogram`);
         setUserBids(userBidsList);
         setHighestBidPrice(maxBidPrice > 0n ? maxBidPrice : null);
+        setAllBidPrices(activeBidPrices);
         console.log(`[ParticipatePage] Highest active bid price: ${maxBidPrice > 0n ? formatEther(maxBidPrice) + ' ETH' : 'none'}`);
 
       } catch (error) {
         console.error('Error fetching bids:', error);
         setHighestBidPrice(null);
+        setAllBidPrices([]);
       } finally {
         setIsLoadingBids(false);
       }
@@ -707,7 +862,7 @@ export default function ParticipatePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div className="grid grid-cols-3 gap-4 mt-4">
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Total Deposited</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
@@ -731,15 +886,6 @@ export default function ParticipatePage() {
                   </div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Avg. Bid Size</div>
-                  <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {contractBalance && totalBids > 0
-                      ? `${(Number(formatEther(contractBalance)) / totalBids).toFixed(4)}`
-                      : '---'}
-                  </div>
-                  <div className={`text-xs ${theme.textSecondary}`}>ETH/bid</div>
-                </div>
-                <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Graduation</div>
                   <div className={`text-lg font-bold ${isGraduated ? 'text-green-600' : theme.textPrimary}`}>
                     {isGraduated === undefined ? '---' : isGraduated ? '✓ Yes' : '✗ No'}
@@ -750,6 +896,16 @@ export default function ParticipatePage() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Bid Price Distribution Histogram */}
+              <div className="mt-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+                <BidPriceHistogram
+                  bidPrices={allBidPrices}
+                  floorPrice={floorPrice}
+                  clearingPrice={clearingPrice}
+                  theme={theme}
+                />
               </div>
             </div>
 
