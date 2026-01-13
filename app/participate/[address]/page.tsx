@@ -731,13 +731,13 @@ export default function ParticipatePage() {
                   </div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`text-sm ${theme.textSecondary}`}>Avg. Price</div>
+                  <div className={`text-sm ${theme.textSecondary}`}>Avg. Bid Size</div>
                   <div className={`text-lg font-bold ${theme.textPrimary}`}>
-                    {contractBalance && totalCleared && totalCleared > 0n
-                      ? `${(Number(formatEther(contractBalance)) / Number(formatEther(totalCleared))).toFixed(6)}`
+                    {contractBalance && totalBids > 0
+                      ? `${(Number(formatEther(contractBalance)) / totalBids).toFixed(4)}`
                       : '---'}
                   </div>
-                  <div className={`text-xs ${theme.textSecondary}`}>ETH/token</div>
+                  <div className={`text-xs ${theme.textSecondary}`}>ETH/bid</div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
                   <div className={`text-sm ${theme.textSecondary}`}>Graduation</div>

@@ -776,10 +776,10 @@ export default function Auctions() {
                       </p>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Price</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Bid Size</p>
                       <p className="font-semibold text-gray-900 dark:text-white">
-                        {contractBalance && totalCleared && (totalCleared as bigint) > 0n
-                          ? `${(Number(formatEther(contractBalance)) / Number(formatEther(totalCleared as bigint))).toFixed(6)} ETH`
+                        {contractBalance && totalBids > 0
+                          ? `${(Number(formatEther(contractBalance)) / totalBids).toFixed(4)} ETH`
                           : '---'}
                       </p>
                     </div>
