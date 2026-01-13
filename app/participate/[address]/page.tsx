@@ -277,10 +277,23 @@ export default function ParticipatePage() {
   // Fetch user bids, total bids, and highest active bid price
   useEffect(() => {
     async function fetchBids() {
+      console.log('[ParticipatePage] fetchBids triggered:', {
+        hasPublicClient: !!publicClient,
+        auctionAddress,
+        address,
+        isBidSuccess,
+      });
+
       if (!publicClient || !auctionAddress) {
+        console.log('[ParticipatePage] Missing publicClient or auctionAddress, skipping');
         setHighestBidPrice(null);
         setContractBalance(null);
         return;
+      }
+
+      // Small delay after successful tx to let the chain update
+      if (isBidSuccess || isExitSuccess || isClaimSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       setIsLoadingBids(true);
@@ -289,6 +302,7 @@ export default function ParticipatePage() {
         const balance = await publicClient.getBalance({
           address: auctionAddress as `0x${string}`,
         });
+        console.log(`[ParticipatePage] Contract balance: ${formatEther(balance)} ETH (raw: ${balance.toString()})`);
         setContractBalance(balance);
 
         // Get nextBidId to know total bids
@@ -335,9 +349,10 @@ export default function ParticipatePage() {
           }
         }
 
+        console.log(`[ParticipatePage] Found ${userBidsList.length} user bids out of ${nextBidId.toString()} total`);
         setUserBids(userBidsList);
         setHighestBidPrice(maxBidPrice > 0n ? maxBidPrice : null);
-        console.log(`[BidFetch] Highest active bid price: ${maxBidPrice > 0n ? formatEther(maxBidPrice) + ' ETH' : 'none'}`);
+        console.log(`[ParticipatePage] Highest active bid price: ${maxBidPrice > 0n ? formatEther(maxBidPrice) + ' ETH' : 'none'}`);
 
       } catch (error) {
         console.error('Error fetching bids:', error);
@@ -348,6 +363,9 @@ export default function ParticipatePage() {
     }
 
     fetchBids();
+    // Also set up an interval to periodically refresh bids and balance
+    const intervalId = setInterval(fetchBids, 15000); // Every 15 seconds
+    return () => clearInterval(intervalId);
   }, [publicClient, address, auctionAddress, isBidSuccess, isExitSuccess, isClaimSuccess]);
 
   // Handle bid submission

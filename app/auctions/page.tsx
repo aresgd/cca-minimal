@@ -226,24 +226,68 @@ export default function Auctions() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  // Fetch user bids and highest active bid price
+  // Fetch contract balance separately (doesn't need address)
   useEffect(() => {
-    const fetchUserBids = async () => {
+    const fetchBalance = async () => {
+      console.log('[Balance] useEffect triggered:', {
+        hasPublicClient: !!publicClient,
+        selectedAuction,
+        isSuccess
+      });
+
       if (!publicClient || !selectedAuction) {
-        setUserBids([]);
-        setHighestBidPrice(null);
+        console.log('[Balance] Missing publicClient or selectedAuction, skipping');
         setContractBalance(null);
         return;
       }
 
-      setIsLoadingBids(true);
+      // Small delay after successful tx to let the chain update
+      if (isSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
       try {
-        // Get contract ETH balance (actual funds deposited)
         const balance = await publicClient.getBalance({
           address: selectedAuction as `0x${string}`,
         });
+        console.log(`[Balance] Contract balance fetched: ${formatEther(balance)} ETH (raw: ${balance.toString()})`);
         setContractBalance(balance);
+      } catch (err) {
+        console.error('[Balance] Error fetching balance:', err);
+        setContractBalance(null);
+      }
+    };
+    fetchBalance();
+    // Also set up an interval to periodically refresh balance
+    const intervalId = setInterval(fetchBalance, 15000); // Every 15 seconds
+    return () => clearInterval(intervalId);
+  }, [publicClient, selectedAuction, isSuccess]);
 
+  // Fetch user bids and highest active bid price
+  useEffect(() => {
+    const fetchUserBids = async () => {
+      console.log('[BidFetch] useEffect triggered:', {
+        hasPublicClient: !!publicClient,
+        selectedAuction,
+        address,
+        isSuccess
+      });
+
+      if (!publicClient || !selectedAuction) {
+        console.log('[BidFetch] Missing publicClient or selectedAuction, skipping');
+        setUserBids([]);
+        setHighestBidPrice(null);
+        setTotalBids(0);
+        return;
+      }
+
+      // Small delay after successful tx to let the chain update
+      if (isSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      setIsLoadingBids(true);
+      try {
         // Get the total number of bids in this auction
         const nextBidIdResult = await publicClient.readContract({
           address: selectedAuction as `0x${string}`,
@@ -253,8 +297,7 @@ export default function Auctions() {
 
         // Set total bids count
         setTotalBids(Number(nextBidIdResult));
-
-        console.log(`[BidFetch] Total bids in auction: ${nextBidIdResult.toString()}`);
+        console.log(`[BidFetch] Total bids in auction: ${nextBidIdResult.toString()}, looking for user: ${address}`);
 
         // Iterate through all bid IDs to find user bids AND track highest active bid
         const bidPromises: Promise<{ userBid: UserBid | null; bidData: Bid | null }>[] = [];
