@@ -373,6 +373,13 @@ export default function ParticipatePage() {
   const { writeContract: claimTokens, data: claimHash, isPending: isClaimPending } = useWriteContract();
   const { isLoading: isClaimConfirming, isSuccess: isClaimSuccess } = useWaitForTransactionReceipt({ hash: claimHash });
 
+  // Creator sweep functions
+  const { writeContract: sweepCurrency, data: sweepCurrencyHash, isPending: isSweepCurrencyPending } = useWriteContract();
+  const { isLoading: isSweepCurrencyConfirming, isSuccess: isSweepCurrencySuccess } = useWaitForTransactionReceipt({ hash: sweepCurrencyHash });
+
+  const { writeContract: sweepUnsoldTokens, data: sweepTokensHash, isPending: isSweepTokensPending } = useWriteContract();
+  const { isLoading: isSweepTokensConfirming, isSuccess: isSweepTokensSuccess } = useWaitForTransactionReceipt({ hash: sweepTokensHash });
+
   // Read auction data
   const auctionContract = {
     address: auctionAddress as `0x${string}`,
@@ -393,6 +400,8 @@ export default function ParticipatePage() {
       { ...auctionContract, functionName: 'totalCleared' },
       { ...auctionContract, functionName: 'isGraduated' },
       { ...auctionContract, functionName: 'tickSpacing' },
+      { ...auctionContract, functionName: 'tokensRecipient' },
+      { ...auctionContract, functionName: 'fundsRecipient' },
     ],
     query: { enabled: !!auctionAddress },
   });
@@ -410,6 +419,14 @@ export default function ParticipatePage() {
   const totalCleared = auctionData?.[9]?.result as bigint | undefined;
   const isGraduated = auctionData?.[10]?.result as boolean | undefined;
   const tickSpacing = auctionData?.[11]?.result as bigint | undefined;
+  const tokensRecipient = auctionData?.[12]?.result as `0x${string}` | undefined;
+  const fundsRecipient = auctionData?.[13]?.result as `0x${string}` | undefined;
+
+  // Check if connected user is the auction creator (tokensRecipient or fundsRecipient)
+  const isCreator = address && (
+    (tokensRecipient && tokensRecipient.toLowerCase() === address.toLowerCase()) ||
+    (fundsRecipient && fundsRecipient.toLowerCase() === address.toLowerCase())
+  );
 
   // Activation is determined by whether tokens have been transferred (totalSupply > 0)
   const activated = totalSupply !== undefined && totalSupply > 0n;
@@ -591,6 +608,24 @@ export default function ParticipatePage() {
       abi: CCA_AUCTION_ABI,
       functionName: 'claimTokens',
       args: [bidId],
+    });
+  };
+
+  // Handle sweep currency (creator only - after graduation)
+  const handleSweepCurrency = () => {
+    sweepCurrency({
+      address: auctionAddress as `0x${string}`,
+      abi: CCA_AUCTION_ABI,
+      functionName: 'sweepCurrency',
+    });
+  };
+
+  // Handle sweep unsold tokens (creator only - after auction ends, if not graduated)
+  const handleSweepUnsoldTokens = () => {
+    sweepUnsoldTokens({
+      address: auctionAddress as `0x${string}`,
+      abi: CCA_AUCTION_ABI,
+      functionName: 'sweepUnsoldTokens',
     });
   };
 
@@ -935,51 +970,157 @@ export default function ParticipatePage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {userBids.map((bid) => (
-                      <div key={bid.bidId.toString()}
-                           className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
-                        <div>
-                          <div className={`font-medium ${theme.textPrimary}`}>
-                            Bid #{bid.bidId.toString()}
-                          </div>
-                          <div className={`text-sm ${theme.textSecondary}`}>
-                            {formatEther(bid.amount)} ETH @ {formatEther(bid.maxPrice)} max price
-                          </div>
-                          {bid.tokensFilled > 0n && (
-                            <div className="text-sm text-green-600">
-                              {formatEther(bid.tokensFilled)} tokens filled
+                    {userBids.map((bid) => {
+                      // Determine what actions are available for this bid
+                      const canExit = !bid.isExited && (auctionStatus === 'active' || auctionStatus === 'ended' || auctionStatus === 'claimable');
+                      const canClaim = bid.isExited && auctionStatus === 'claimable' && isGraduated && bid.tokensFilled > 0n;
+                      const canGetRefund = !bid.isExited && auctionStatus === 'claimable' && !isGraduated;
+                      const isFullyExited = bid.isExited && bid.tokensFilled === 0n;
+                      const hasClaimed = bid.isExited && bid.tokensFilled > 0n && auctionStatus === 'claimable';
+
+                      return (
+                        <div key={bid.bidId.toString()}
+                             className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+                          <div>
+                            <div className={`font-medium ${theme.textPrimary}`}>
+                              Bid #{bid.bidId.toString()}
                             </div>
-                          )}
+                            <div className={`text-sm ${theme.textSecondary}`}>
+                              {formatEther(bid.amount)} ETH @ {formatEther(bid.maxPrice)} max price
+                            </div>
+                            {bid.tokensFilled > 0n && (
+                              <div className="text-sm text-green-600">
+                                {formatEther(bid.tokensFilled)} tokens {bid.isExited ? 'allocated' : 'filled'}
+                              </div>
+                            )}
+                            {/* Status indicator */}
+                            {bid.isExited && (
+                              <div className="text-xs mt-1">
+                                {isGraduated === false ? (
+                                  <span className="text-amber-600">ETH refunded (auction failed)</span>
+                                ) : bid.tokensFilled > 0n ? (
+                                  <span className="text-blue-600">Ready to claim tokens</span>
+                                ) : (
+                                  <span className="text-gray-500">Exited (no tokens)</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            {/* Exit button - available during active, ended, or claimable phases if not yet exited */}
+                            {canExit && (
+                              <button
+                                onClick={() => handleExitBid(bid.bidId)}
+                                disabled={isExitPending || isExitConfirming}
+                                className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-gray-400 text-white rounded-lg text-sm"
+                              >
+                                {isExitPending || isExitConfirming ? 'Processing...' : 'Exit Bid'}
+                              </button>
+                            )}
+                            {/* Refund notice for failed auctions */}
+                            {canGetRefund && (
+                              <button
+                                onClick={() => handleExitBid(bid.bidId)}
+                                disabled={isExitPending || isExitConfirming}
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-400 text-white rounded-lg text-sm"
+                              >
+                                {isExitPending || isExitConfirming ? 'Processing...' : 'Get Refund'}
+                              </button>
+                            )}
+                            {/* Claim tokens - only if graduated and bid was exited with tokens filled */}
+                            {canClaim && (
+                              <button
+                                onClick={() => handleClaimTokens(bid.bidId)}
+                                disabled={isClaimPending || isClaimConfirming}
+                                className={`px-4 py-2 ${theme.primaryColor} ${theme.primaryHover} disabled:bg-gray-400 text-white rounded-lg text-sm`}
+                              >
+                                {isClaimPending || isClaimConfirming ? 'Claiming...' : 'Claim Tokens'}
+                              </button>
+                            )}
+                            {/* Status badges */}
+                            {isFullyExited && (
+                              <span className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm">
+                                Exited
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          {!bid.isExited && auctionStatus === 'active' && (
-                            <button
-                              onClick={() => handleExitBid(bid.bidId)}
-                              disabled={isExitPending || isExitConfirming}
-                              className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-gray-400 text-white rounded-lg text-sm"
-                            >
-                              {isExitPending || isExitConfirming ? 'Exiting...' : 'Exit'}
-                            </button>
-                          )}
-                          {bid.isExited && auctionStatus === 'claimable' && bid.tokensFilled > 0n && (
-                            <button
-                              onClick={() => handleClaimTokens(bid.bidId)}
-                              disabled={isClaimPending || isClaimConfirming}
-                              className={`px-4 py-2 ${theme.primaryColor} ${theme.primaryHover} disabled:bg-gray-400 text-white rounded-lg text-sm`}
-                            >
-                              {isClaimPending || isClaimConfirming ? 'Claiming...' : 'Claim'}
-                            </button>
-                          )}
-                          {bid.isExited && !bid.tokensFilled && (
-                            <span className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm">
-                              Exited
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Creator Admin Panel */}
+            {isCreator && (auctionStatus === 'ended' || auctionStatus === 'claimable') && (
+              <div className={`${theme.cardBackground} rounded-2xl shadow-lg p-6 border-2 border-amber-500`}>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xl">⚙️</span>
+                  <h3 className={`text-lg font-semibold ${theme.textPrimary}`}>Creator Admin Panel</h3>
+                </div>
+                <p className={`text-sm ${theme.textSecondary} mb-4`}>
+                  As the auction creator, you can withdraw funds after the auction ends.
+                </p>
+
+                <div className="space-y-4">
+                  {/* Sweep Currency - Only if graduated */}
+                  {isGraduated && (
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <h4 className="font-medium text-green-800 dark:text-green-300 mb-2">
+                        Withdraw Raised Funds
+                      </h4>
+                      <p className="text-sm text-green-700 dark:text-green-400 mb-3">
+                        The auction graduated successfully. You can withdraw the raised ETH to the funds recipient address.
+                      </p>
+                      <p className="text-xs text-green-600 dark:text-green-500 mb-3">
+                        Funds Recipient: {fundsRecipient ? `${fundsRecipient.slice(0, 6)}...${fundsRecipient.slice(-4)}` : '---'}
+                      </p>
+                      <button
+                        onClick={handleSweepCurrency}
+                        disabled={isSweepCurrencyPending || isSweepCurrencyConfirming}
+                        className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium"
+                      >
+                        {isSweepCurrencyPending || isSweepCurrencyConfirming ? 'Processing...' : 'Withdraw Raised ETH'}
+                      </button>
+                      {isSweepCurrencySuccess && (
+                        <p className="text-sm text-green-600 mt-2">Funds withdrawn successfully!</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sweep Unsold Tokens - Only if NOT graduated */}
+                  {isGraduated === false && (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                      <h4 className="font-medium text-amber-800 dark:text-amber-300 mb-2">
+                        Recover Unsold Tokens
+                      </h4>
+                      <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                        The auction did not graduate. You can recover the unsold tokens to the tokens recipient address.
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-500 mb-3">
+                        Tokens Recipient: {tokensRecipient ? `${tokensRecipient.slice(0, 6)}...${tokensRecipient.slice(-4)}` : '---'}
+                      </p>
+                      <button
+                        onClick={handleSweepUnsoldTokens}
+                        disabled={isSweepTokensPending || isSweepTokensConfirming}
+                        className="w-full px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white rounded-lg font-medium"
+                      >
+                        {isSweepTokensPending || isSweepTokensConfirming ? 'Processing...' : 'Recover Unsold Tokens'}
+                      </button>
+                      {isSweepTokensSuccess && (
+                        <p className="text-sm text-amber-600 mt-2">Tokens recovered successfully!</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Info about recipients */}
+                  <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs">
+                    <p className={theme.textSecondary}>
+                      <strong>Note:</strong> Funds/tokens are sent to the addresses configured during auction creation.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>

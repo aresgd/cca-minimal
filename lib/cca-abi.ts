@@ -252,7 +252,36 @@ export const CCA_AUCTION_ABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint64' }],
   },
-  // Activation
+  // ============ EXIT FUNCTIONS ============
+  // Exit Partially Filled Bid (for bids that are only partially filled)
+  {
+    name: 'exitPartiallyFilledBid',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'bidId', type: 'uint256' },
+      { name: 'prevTickPrice', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  // ============ CREATOR/ADMIN FUNCTIONS (Post-Auction) ============
+  // Sweep raised currency to fundsRecipient (only after graduation)
+  {
+    name: 'sweepCurrency',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  // Sweep unsold tokens to tokensRecipient (after auction ends, if not graduated)
+  {
+    name: 'sweepUnsoldTokens',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  // ============ ACTIVATION ============
   {
     name: 'onTokensReceived',
     type: 'function',
@@ -260,7 +289,7 @@ export const CCA_AUCTION_ABI = [
     inputs: [],
     outputs: [],
   },
-  // Events
+  // ============ EVENTS ============
   {
     name: 'BidSubmitted',
     type: 'event',
